@@ -16,9 +16,9 @@ package web
 import (
 	"time"
 
-	"github.com/flike/kingshard/config"
-	"github.com/flike/kingshard/core/golog"
-	"github.com/flike/kingshard/proxy/server"
+	"kingshard/config"
+	"kingshard/core/golog"
+	"kingshard/proxy/server"
 	"github.com/labstack/echo"
 	"github.com/labstack/echo/engine/standard"
 	mw "github.com/labstack/echo/middleware"

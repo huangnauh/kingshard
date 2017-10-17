@@ -19,10 +19,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/flike/kingshard/backend"
-	"github.com/flike/kingshard/core/golog"
-	"github.com/flike/kingshard/mysql"
-	"github.com/flike/kingshard/sqlparser"
+	"kingshard/backend"
+	"kingshard/core/golog"
+	"kingshard/mysql"
+	"kingshard/sqlparser"
 )
 
 var nstring = sqlparser.String
