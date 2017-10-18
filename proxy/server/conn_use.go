@@ -18,7 +18,8 @@ import (
 	"fmt"
 
 	"kingshard/backend"
-	"kingshard/mysql"
+	//"kingshard/mysql"
+	"kingshard/core/errors"
 )
 
 func (c *ClientConn) handleUseDB(dbName string) error {
@@ -28,15 +29,21 @@ func (c *ClientConn) handleUseDB(dbName string) error {
 	if len(dbName) == 0 {
 		return fmt.Errorf("must have database, the length of dbName is zero")
 	}
-	if c.schema == nil {
-		return mysql.NewDefaultError(mysql.ER_NO_DB_ERROR)
+
+	//if c.schema == nil {
+	//	return mysql.NewDefaultError(mysql.ER_NO_DB_ERROR)
+	//}
+
+	if c.db != dbName {
+		return errors.ErrNoDBExist
 	}
 
-	nodeName := c.schema.rule.DefaultRule.Nodes[0]
-
-	n := c.proxy.GetNode(nodeName)
+	node, err := c.GetNode(true)
+	if err != nil {
+		return err
+	}
 	//get the connection from slave preferentially
-	co, err = c.getBackendConn(n, true)
+	co, err = c.getBackendConn(node, true)
 	defer c.closeConn(co, false)
 	if err != nil {
 		return err

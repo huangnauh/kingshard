@@ -32,12 +32,21 @@ import (
 	"kingshard/config"
 	"kingshard/core/errors"
 	"kingshard/core/golog"
+	"kingshard/proxy/database"
 	"kingshard/proxy/router"
 )
 
 type Schema struct {
 	nodes map[string]*backend.Node
 	rule  *router.Router
+}
+
+func (s *Schema) IsUsed() bool {
+	return s.rule != nil
+}
+
+func (s *Schema) NeedTry(err error) bool {
+	return s.IsUsed() && err == errors.ErrNoDBNode
 }
 
 type BlacklistSqls struct {
@@ -52,10 +61,10 @@ const (
 )
 
 type Server struct {
-	cfg      *config.Config
-	addr     string
-	user     string
-	password string
+	cfg  *config.Config
+	addr string
+	//user     string
+	//password string
 	//db       string
 
 	statusIndex        int32
@@ -69,9 +78,10 @@ type Server struct {
 	allowipsIndex      int32
 	allowips           [2][]net.IP
 
-	counter *Counter
-	nodes   map[string]*backend.Node
-	schema  *Schema
+	counter   *Counter
+	nodes     map[string]*backend.Node
+	schema    *Schema
+	databases map[string]*database.Database
 
 	listener net.Listener
 	running  bool
@@ -193,7 +203,9 @@ func (s *Server) parseNodes() error {
 func (s *Server) parseSchema() error {
 	schemaCfg := s.cfg.Schema
 	if len(schemaCfg.Nodes) == 0 {
-		return fmt.Errorf("schema must have a node")
+		//return fmt.Errorf("schema must have a node")
+		s.schema = &Schema{}
+		return nil
 	}
 
 	nodes := make(map[string]*backend.Node)
@@ -222,14 +234,77 @@ func (s *Server) parseSchema() error {
 	return nil
 }
 
+func (s *Server) parseDatabase() error {
+	s.databases = make(map[string]*database.Database)
+	dbCfg := s.cfg.Databases
+	for index := range dbCfg {
+		c := dbCfg[index]
+		nodes := make(map[string]bool)
+		for _, n := range c.Nodes {
+			if s.GetNode(n) == nil {
+				return fmt.Errorf("database %s node [%s] config is not exists", c.DB, n)
+			}
+
+			if ok := nodes[n]; ok {
+				return fmt.Errorf("database %s node [%s] duplicate", c.DB, n)
+			}
+
+			nodes[n] = true
+		}
+		db := new(database.Database)
+		db.ParseDatabase(&c)
+		s.databases[c.DB] = db
+	}
+	return nil
+}
+
+func (s *Server) GetNodeByDatabase(db string) (*backend.Node, error) {
+	d, ok := s.databases[db]
+	if !ok {
+		golog.Error("server", "GetNodeByDatabase", errors.ErrNoDBExist.Error(), 0)
+		return nil, errors.ErrNoDBExist
+	}
+	if d == nil {
+		golog.Error("server", "GetNodeByDatabase", errors.ErrNoDBExist.Error(), 0)
+		return nil, errors.ErrNoDBExist
+	}
+
+	node, err := d.GetNextNode()
+	if err != nil {
+		return nil, err
+	}
+
+	n := s.GetNode(node)
+	if n == nil {
+		golog.Info("server", "GetNodeByDatabase", errors.ErrNoNodeExist.Error(), 0)
+		return nil, errors.ErrNoNodeExist
+	}
+	return n, nil
+}
+
+
+func (s *Server) GetUserByDatabase(db string) (string, string, error) {
+	d, ok := s.databases[db]
+	if !ok {
+		golog.Error("server", "GetUserByDatabase", errors.ErrNoDBExist.Error(), 0)
+		return "", "", errors.ErrNoDBExist
+	}
+	if d == nil {
+		golog.Error("server", "GetUserByDatabase", errors.ErrNoDBExist.Error(), 0)
+		return "", "", errors.ErrNoDBExist
+	}
+
+	return d.Cfg.User, d.Cfg.Password, nil
+}
+
 func NewServer(cfg *config.Config) (*Server, error) {
 	s := new(Server)
 
 	s.cfg = cfg
 	s.counter = new(Counter)
 	s.addr = cfg.Addr
-	s.user = cfg.User
-	s.password = cfg.Password
+	//s.user = cfg.User
+	//s.password = cfg.Password
 	atomic.StoreInt32(&s.statusIndex, 0)
 	s.status[s.statusIndex] = Online
 	atomic.StoreInt32(&s.logSqlIndex, 0)
@@ -262,6 +337,10 @@ func NewServer(cfg *config.Config) (*Server, error) {
 	}
 
 	if err := s.parseSchema(); err != nil {
+		return nil, err
+	}
+
+	if err := s.parseDatabase(); err != nil {
 		return nil, err
 	}
 

@@ -2,8 +2,8 @@
 addr : 0.0.0.0:9696
 
 # server user and password
-user :  root
-password : root
+#user :  root
+#password : root
 
 # the web api server
 web_addr : 0.0.0.0:9797
@@ -52,7 +52,7 @@ nodes :
 
     # slave represents a real mysql salve server,and the number after '@' is
     # read load weight of this slave.
-    slave : 10.0.5.108:3306,10.0.0.193:3306
+    slave : 10.0.0.193:3306
     down_after_noalive : 32
 
 -
@@ -69,7 +69,7 @@ nodes :
     master : 10.0.5.108:3306
 
     # slave represents a real mysql salve server
-    slave : 10.0.5.108:3306,10.0.0.193:3306
+    slave : 10.0.5.108:3306
 
     # down mysql after N seconds noalive
     # 0 will no down
@@ -78,21 +78,20 @@ nodes :
 
 # schema defines which db can be used by client and this db's sql will be executed in which nodes, 
 # the db is also the default database
-schema :
-    nodes: [node1]
-    default: node1
-    shard:
-    -
+#schema :
+#    nodes: [node1, node2]
+#    default: node1
+#    shard:
+#    -
 
 databases:
--
- db: buckets
- user: root1
- password: root1
- nodes: [node1, node2]
--
- db: offers
- user: root2
- password: root2
- nodes: [node2]
-
+    -
+     db: transcoding
+     user: root1
+     password: root1
+     nodes: [node1]
+    -
+     db: banma
+     user: root2
+     password: root2
+     nodes: [node2]

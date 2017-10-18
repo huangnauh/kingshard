@@ -32,6 +32,8 @@ import (
 
 /*处理query语句*/
 func (c *ClientConn) handleQuery(sql string) (err error) {
+	golog.Debug("ClientConn", "handleQuery", sql, 0)
+
 	defer func() {
 		if e := recover(); e != nil {
 			golog.OutputSql("Error", "err:%v,sql:%s", e, sql)
@@ -71,15 +73,15 @@ func (c *ClientConn) handleQuery(sql string) (err error) {
 
 	switch v := stmt.(type) {
 	case *sqlparser.Select:
-		return c.handleSelect(v, nil)
+		return c.handleSelect(v, sql,nil)
 	case *sqlparser.Insert:
-		return c.handleExec(stmt, nil)
+		return c.handleExec(stmt, sql,nil)
 	case *sqlparser.Update:
-		return c.handleExec(stmt, nil)
+		return c.handleExec(stmt, sql,nil)
 	case *sqlparser.Delete:
-		return c.handleExec(stmt, nil)
+		return c.handleExec(stmt, sql,nil)
 	case *sqlparser.Replace:
-		return c.handleExec(stmt, nil)
+		return c.handleExec(stmt, sql,nil)
 	case *sqlparser.Set:
 		return c.handleSet(v, sql)
 	case *sqlparser.Begin:
@@ -97,13 +99,40 @@ func (c *ClientConn) handleQuery(sql string) (err error) {
 	case *sqlparser.SimpleSelect:
 		return c.handleSimpleSelect(v)
 	case *sqlparser.Truncate:
-		return c.handleExec(stmt, nil)
+		return c.handleExec(stmt, sql,nil)
 	default:
 		return fmt.Errorf("statement %T not support now", stmt)
 	}
 
 	return nil
 }
+
+func (c *ClientConn) GetNode(tryDefault bool) (*backend.Node, error){
+	node, err := c.proxy.GetNodeByDatabase(c.db)
+	if !tryDefault || !c.schema.NeedTry(err) {
+		return node, err
+	}
+
+	defaultRule := c.schema.rule.DefaultRule
+	if len(defaultRule.Nodes) == 0 {
+		golog.Error("server", "GetNode", errors.ErrNoDefaultNode.Error(), 0)
+		return nil, errors.ErrNoDefaultNode
+	}
+	node = c.proxy.GetNode(defaultRule.Nodes[0])
+	return node, nil
+}
+
+func (c *ClientConn) GetNodeByTable(table string) (*backend.Node, error){
+	n, err := c.proxy.GetNodeByDatabase(c.db)
+	if !c.schema.NeedTry(err) {
+		return n, err
+	}
+
+	nodeName := c.schema.rule.GetRule(c.db, table).Nodes[0]
+	n = c.proxy.GetNode(nodeName)
+	return n, nil
+}
+
 
 func (c *ClientConn) getBackendConn(n *backend.Node, fromSlave bool) (co *backend.BackendConn, err error) {
 	if !c.isInTransaction() {
@@ -142,13 +171,17 @@ func (c *ClientConn) getBackendConn(n *backend.Node, fromSlave bool) (co *backen
 		}
 	}
 
+	msg := fmt.Sprintf("connect mysql addr: %s, database %s", co.GetAddr(), c.db)
+	golog.Debug("ClientConn", "getBackendConn", msg, 0)
 	if err = co.UseDB(c.db); err != nil {
 		//reset the database to null
 		c.db = ""
+		golog.Error("ClientConn", "getBackendConn", err.Error(), 0)
 		return
 	}
 
 	if err = co.SetCharset(c.charset, c.collation); err != nil {
+		golog.Error("ClientConn", "getBackendConn", err.Error(), 0)
 		return
 	}
 
@@ -347,7 +380,12 @@ func (c *ClientConn) newEmptyResultset(stmt *sqlparser.Select) *mysql.Resultset 
 	return r
 }
 
-func (c *ClientConn) handleExec(stmt sqlparser.Statement, args []interface{}) error {
+func (c *ClientConn) handleExec(stmt sqlparser.Statement, sql string, args []interface{}) error {
+	err := c.handleExecInNode(stmt, sql, args, false)
+	if !c.schema.NeedTry(err) {
+		return err
+	}
+
 	plan, err := c.schema.rule.BuildPlan(c.db, stmt)
 	if err != nil {
 		return err

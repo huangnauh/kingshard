@@ -25,9 +25,9 @@ var configFileName string
 
 //整个config文件对应的结构
 type Config struct {
-	Addr     string `yaml:"addr"`
-	User     string `yaml:"user"`
-	Password string `yaml:"password"`
+	Addr string `yaml:"addr"`
+	//User     string `yaml:"user"`
+	//Password string `yaml:"password"`
 
 	WebAddr     string `yaml:"web_addr"`
 	WebUser     string `yaml:"web_user"`
@@ -42,7 +42,8 @@ type Config struct {
 	Charset     string       `yaml:"proxy_charset"`
 	Nodes       []NodeConfig `yaml:"nodes"`
 
-	Schema SchemaConfig `yaml:"schema"`
+	Schema    SchemaConfig     `yaml:"schema"`
+	Databases []DatabaseConfig `yaml:"databases"`
 }
 
 //node节点对应的配置
@@ -75,6 +76,13 @@ type ShardConfig struct {
 	Type          string   `yaml:"type"`
 	TableRowLimit int      `yaml:"table_row_limit"`
 	DateRange     []string `yaml:"date_range"`
+}
+
+type DatabaseConfig struct {
+	DB       string   `yaml:"db"`
+	User     string   `yaml:"user"`
+	Password string   `yaml:"password"`
+	Nodes    []string `yaml:"nodes"`
 }
 
 func ParseConfigData(data []byte) (*Config, error) {

@@ -410,12 +410,12 @@ func (c *ClientConn) handleShowProxyConfig() (*mysql.Resultset, error) {
 	const (
 		Column = 2
 	)
-	for name := range c.schema.nodes {
+	for name := range c.proxy.nodes {
 		nodeNames = append(nodeNames, name)
 	}
 
 	rows = append(rows, []string{"Addr", c.proxy.cfg.Addr})
-	rows = append(rows, []string{"User", c.proxy.cfg.User})
+	//rows = append(rows, []string{"User", c.proxy.cfg.User})
 	rows = append(rows, []string{"LogPath", c.proxy.cfg.LogPath})
 	rows = append(rows, []string{"LogLevel", c.proxy.cfg.LogLevel})
 	rows = append(rows, []string{"LogSql", c.proxy.logSql[c.proxy.logSqlIndex]})
@@ -454,7 +454,7 @@ func (c *ClientConn) handleShowNodeConfig() (*mysql.Resultset, error) {
 	)
 
 	//var nodeRows [][]string
-	for name, node := range c.schema.nodes {
+	for name, node := range c.proxy.nodes {
 		//"master"
 		rows = append(
 			rows,
@@ -510,6 +510,10 @@ func (c *ClientConn) handleShowSchemaConfig() (*mysql.Resultset, error) {
 	}
 
 	//default Rule
+	if !c.schema.IsUsed() {
+		return new(mysql.Resultset), nil
+	}
+
 	var defaultRule = c.schema.rule.DefaultRule
 	rows = append(
 		rows,

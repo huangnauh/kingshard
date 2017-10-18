@@ -21,6 +21,10 @@ import (
 var (
 	ErrNoMasterConn  = errors.New("no master connection")
 	ErrNoSlaveConn   = errors.New("no slave connection")
+	ErrNoDBNode      = errors.New("no database node")
+	ErrDBNotAllow    = errors.New("database not allow")
+	ErrNoDBExist     = errors.New("no database exist")
+	ErrNoNodeExist   = errors.New("no node exist")
 	ErrNoDefaultNode = errors.New("no default node")
 	ErrNoMasterDB    = errors.New("no master database")
 	ErrNoSlaveDB     = errors.New("no slave database")

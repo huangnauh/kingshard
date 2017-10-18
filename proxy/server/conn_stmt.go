@@ -21,7 +21,6 @@ import (
 	"strconv"
 	"strings"
 
-	"kingshard/core/errors"
 	"kingshard/core/golog"
 	"kingshard/mysql"
 	"kingshard/sqlparser"
@@ -56,9 +55,9 @@ func (s *Stmt) ResetParams() {
 }
 
 func (c *ClientConn) handleStmtPrepare(sql string) error {
-	if c.schema == nil {
-		return mysql.NewDefaultError(mysql.ER_NO_DB_ERROR)
-	}
+	//if c.schema == nil {
+	//	return mysql.NewDefaultError(mysql.ER_NO_DB_ERROR)
+	//}
 
 	s := new(Stmt)
 
@@ -72,9 +71,10 @@ func (c *ClientConn) handleStmtPrepare(sql string) error {
 
 	s.sql = sql
 
-	defaultRule := c.schema.rule.DefaultRule
-
-	n := c.proxy.GetNode(defaultRule.Nodes[0])
+	n, err := c.GetNode(true)
+	if err != nil {
+		return err
+	}
 
 	co, err := c.getBackendConn(n, false)
 	defer c.closeConn(co, false)
@@ -239,15 +239,15 @@ func (c *ClientConn) handleStmtExecute(data []byte) error {
 
 	switch stmt := s.s.(type) {
 	case *sqlparser.Select:
-		err = c.handlePrepareSelect(stmt, s.sql, s.args)
+		err = c.handleSelectInNode(stmt, s.sql, s.args, true)
 	case *sqlparser.Insert:
-		err = c.handlePrepareExec(s.s, s.sql, s.args)
+		err = c.handleExecInNode(s.s, s.sql, s.args, true)
 	case *sqlparser.Update:
-		err = c.handlePrepareExec(s.s, s.sql, s.args)
+		err = c.handleExecInNode(s.s, s.sql, s.args, true)
 	case *sqlparser.Delete:
-		err = c.handlePrepareExec(s.s, s.sql, s.args)
+		err = c.handleExecInNode(s.s, s.sql, s.args, true)
 	case *sqlparser.Replace:
-		err = c.handlePrepareExec(s.s, s.sql, s.args)
+		err = c.handleExecInNode(s.s, s.sql, s.args, true)
 	default:
 		err = fmt.Errorf("command %T not supported now", stmt)
 	}
@@ -257,15 +257,16 @@ func (c *ClientConn) handleStmtExecute(data []byte) error {
 	return err
 }
 
-func (c *ClientConn) handlePrepareSelect(stmt *sqlparser.Select, sql string, args []interface{}) error {
-	defaultRule := c.schema.rule.DefaultRule
-	if len(defaultRule.Nodes) == 0 {
-		return errors.ErrNoDefaultNode
+
+func (c *ClientConn) handleSelectInNode(stmt *sqlparser.Select, sql string,
+	args []interface{}, tryDefault bool) error {
+	node, err := c.GetNode(tryDefault)
+	if err != nil {
+		return err
 	}
-	defaultNode := c.proxy.GetNode(defaultRule.Nodes[0])
 
 	//choose connection in slave DB first
-	conn, err := c.getBackendConn(defaultNode, true)
+	conn, err := c.getBackendConn(node, true)
 	defer c.closeConn(conn, false)
 	if err != nil {
 		return err
@@ -279,7 +280,7 @@ func (c *ClientConn) handlePrepareSelect(stmt *sqlparser.Select, sql string, arg
 	var rs []*mysql.Result
 	rs, err = c.executeInNode(conn, sql, args)
 	if err != nil {
-		golog.Error("ClientConn", "handlePrepareSelect", err.Error(), c.connectionId)
+		golog.Error("ClientConn", "handleSelectInNode", err.Error(), c.connectionId)
 		return err
 	}
 
@@ -294,15 +295,15 @@ func (c *ClientConn) handlePrepareSelect(stmt *sqlparser.Select, sql string, arg
 	return err
 }
 
-func (c *ClientConn) handlePrepareExec(stmt sqlparser.Statement, sql string, args []interface{}) error {
-	defaultRule := c.schema.rule.DefaultRule
-	if len(defaultRule.Nodes) == 0 {
-		return errors.ErrNoDefaultNode
+func (c *ClientConn) handleExecInNode(stmt sqlparser.Statement, sql string,
+	args []interface{}, tryDefault bool) error {
+	node, err := c.GetNode(tryDefault)
+	if err != nil {
+		return err
 	}
-	defaultNode := c.proxy.GetNode(defaultRule.Nodes[0])
 
 	//execute in Master DB
-	conn, err := c.getBackendConn(defaultNode, false)
+	conn, err := c.getBackendConn(node, false)
 	defer c.closeConn(conn, false)
 	if err != nil {
 		return err
