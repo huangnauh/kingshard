@@ -61,6 +61,8 @@ func (c *ClientConn) handleQuery(sql string) (err error) {
 		return err
 	}
 	if hasHandled {
+		golog.Info("server", "handleQuery", "sql has handled", 0,
+			"sql", sql)
 		return nil
 	}
 
@@ -73,15 +75,15 @@ func (c *ClientConn) handleQuery(sql string) (err error) {
 
 	switch v := stmt.(type) {
 	case *sqlparser.Select:
-		return c.handleSelect(v, sql,nil)
+		return c.handleSelect(v, sql, nil)
 	case *sqlparser.Insert:
-		return c.handleExec(stmt, sql,nil)
+		return c.handleExec(stmt, sql, nil)
 	case *sqlparser.Update:
-		return c.handleExec(stmt, sql,nil)
+		return c.handleExec(stmt, sql, nil)
 	case *sqlparser.Delete:
-		return c.handleExec(stmt, sql,nil)
+		return c.handleExec(stmt, sql, nil)
 	case *sqlparser.Replace:
-		return c.handleExec(stmt, sql,nil)
+		return c.handleExec(stmt, sql, nil)
 	case *sqlparser.Set:
 		return c.handleSet(v, sql)
 	case *sqlparser.Begin:
@@ -99,7 +101,7 @@ func (c *ClientConn) handleQuery(sql string) (err error) {
 	case *sqlparser.SimpleSelect:
 		return c.handleSimpleSelect(v)
 	case *sqlparser.Truncate:
-		return c.handleExec(stmt, sql,nil)
+		return c.handleExec(stmt, sql, nil)
 	default:
 		return fmt.Errorf("statement %T not support now", stmt)
 	}
@@ -107,7 +109,7 @@ func (c *ClientConn) handleQuery(sql string) (err error) {
 	return nil
 }
 
-func (c *ClientConn) GetNode(tryDefault bool) (*backend.Node, error){
+func (c *ClientConn) GetNode(tryDefault bool) (*backend.Node, error) {
 	node, err := c.proxy.GetNodeByDatabase(c.db)
 	if !tryDefault || !c.schema.NeedTry(err) {
 		return node, err
@@ -122,7 +124,7 @@ func (c *ClientConn) GetNode(tryDefault bool) (*backend.Node, error){
 	return node, nil
 }
 
-func (c *ClientConn) GetNodeByTable(table string) (*backend.Node, error){
+func (c *ClientConn) GetNodeByTable(table string) (*backend.Node, error) {
 	n, err := c.proxy.GetNodeByDatabase(c.db)
 	if !c.schema.NeedTry(err) {
 		return n, err
@@ -132,7 +134,6 @@ func (c *ClientConn) GetNodeByTable(table string) (*backend.Node, error){
 	n = c.proxy.GetNode(nodeName)
 	return n, nil
 }
-
 
 func (c *ClientConn) getBackendConn(n *backend.Node, fromSlave bool) (co *backend.BackendConn, err error) {
 	if !c.isInTransaction() {

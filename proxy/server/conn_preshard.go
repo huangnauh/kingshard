@@ -232,38 +232,32 @@ func (c *ClientConn) getSelectExecDB(sql string, tokens []string, tokensLen int)
 
 	schema := c.proxy.schema
 
-	checkRule := false
-	if schema.IsUsed() {
-		checkRule = len(schema.rule.Rules) != 0
-	}
+	for i := 1; i < tokensLen; i++ {
+		if strings.ToLower(tokens[i]) == mysql.TK_STR_FROM {
+			if i+1 < tokensLen {
+				DBName, tableName := sqlparser.GetDBTable(tokens[i+1])
+				//if the token[i+1] like this:kingshard.test_shard_hash
+				if DBName != "" {
+					if c.db != DBName {
+						return nil, errors.ErrDBNotAllow
+					}
+					ruleDB = DBName
+				} else {
+					ruleDB = c.db
+				}
 
-	if checkRule {
-		for i := 1; i < tokensLen; i++ {
-			if strings.ToLower(tokens[i]) == mysql.TK_STR_FROM {
-				if i+1 < tokensLen {
-					DBName, tableName := sqlparser.GetDBTable(tokens[i+1])
-					//if the token[i+1] like this:kingshard.test_shard_hash
-					if DBName != "" {
-						if c.db != DBName {
-							return nil, errors.ErrDBNotAllow
-						}
-						ruleDB = DBName
-					} else {
-						ruleDB = c.db
-					}
-					if schema.rule.GetRule(ruleDB, tableName) != schema.rule.DefaultRule {
-						return nil, nil
-					} else {
-						//if the table is not shard table,send the sql
-						//to default db
-						break
-					}
+				if schema.HasRules() && schema.rule.GetRule(ruleDB, tableName) != schema.rule.DefaultRule {
+					return nil, nil
+				} else {
+					//if the table is not shard table,send the sql
+					//to default db
+					break
 				}
 			}
+		}
 
-			if strings.ToLower(tokens[i]) == mysql.TK_STR_LAST_INSERT_ID {
-				return nil, nil
-			}
+		if strings.ToLower(tokens[i]) == mysql.TK_STR_LAST_INSERT_ID {
+			return nil, nil
 		}
 	}
 
@@ -287,30 +281,23 @@ func (c *ClientConn) getDeleteExecDB(sql string, tokens []string, tokensLen int)
 	executeDB.sql = sql
 	schema := c.proxy.schema
 
-	checkRule := false
-	if schema.IsUsed() {
-		checkRule = len(schema.rule.Rules) != 0
-	}
-
-	if checkRule {
-		for i := 1; i < tokensLen; i++ {
-			if strings.ToLower(tokens[i]) == mysql.TK_STR_FROM {
-				if i+1 < tokensLen {
-					DBName, tableName := sqlparser.GetDBTable(tokens[i+1])
-					//if the token[i+1] like this:kingshard.test_shard_hash
-					if DBName != "" {
-						if c.db != DBName {
-							return nil, errors.ErrDBNotAllow
-						}
-						ruleDB = DBName
-					} else {
-						ruleDB = c.db
+	for i := 1; i < tokensLen; i++ {
+		if strings.ToLower(tokens[i]) == mysql.TK_STR_FROM {
+			if i+1 < tokensLen {
+				DBName, tableName := sqlparser.GetDBTable(tokens[i+1])
+				//if the token[i+1] like this:kingshard.test_shard_hash
+				if DBName != "" {
+					if c.db != DBName {
+						return nil, errors.ErrDBNotAllow
 					}
-					if schema.rule.GetRule(ruleDB, tableName) != schema.rule.DefaultRule {
-						return nil, nil
-					} else {
-						break
-					}
+					ruleDB = DBName
+				} else {
+					ruleDB = c.db
+				}
+				if schema.HasRules() && schema.rule.GetRule(ruleDB, tableName) != schema.rule.DefaultRule {
+					return nil, nil
+				} else {
+					break
 				}
 			}
 		}
@@ -331,30 +318,23 @@ func (c *ClientConn) getInsertOrReplaceExecDB(sql string, tokens []string, token
 	executeDB.sql = sql
 	schema := c.proxy.schema
 
-	checkRule := false
-	if schema.IsUsed() {
-		checkRule = len(schema.rule.Rules) != 0
-	}
-
-	if checkRule {
-		for i := 0; i < tokensLen; i++ {
-			if strings.ToLower(tokens[i]) == mysql.TK_STR_INTO {
-				if i+1 < tokensLen {
-					DBName, tableName := sqlparser.GetInsertDBTable(tokens[i+1])
-					//if the token[i+1] like this:kingshard.test_shard_hash
-					if DBName != "" {
-						ruleDB = DBName
-						if ruleDB != c.db {
-							return nil, errors.ErrDBNotAllow
-						}
-					} else {
-						ruleDB = c.db
+	for i := 0; i < tokensLen; i++ {
+		if strings.ToLower(tokens[i]) == mysql.TK_STR_INTO {
+			if i+1 < tokensLen {
+				DBName, tableName := sqlparser.GetInsertDBTable(tokens[i+1])
+				//if the token[i+1] like this:kingshard.test_shard_hash
+				if DBName != "" {
+					ruleDB = DBName
+					if ruleDB != c.db {
+						return nil, errors.ErrDBNotAllow
 					}
-					if schema.rule.GetRule(ruleDB, tableName) != schema.rule.DefaultRule {
-						return nil, nil
-					} else {
-						break
-					}
+				} else {
+					ruleDB = c.db
+				}
+				if schema.HasRules() && schema.rule.GetRule(ruleDB, tableName) != schema.rule.DefaultRule {
+					return nil, nil
+				} else {
+					break
 				}
 			}
 		}
@@ -375,29 +355,22 @@ func (c *ClientConn) getUpdateExecDB(sql string, tokens []string, tokensLen int)
 	executeDB.sql = sql
 	schema := c.proxy.schema
 
-	checkRule := false
-	if schema.IsUsed() {
-		checkRule = len(schema.rule.Rules) != 0
-	}
-
-	if checkRule {
-		for i := 0; i < tokensLen; i++ {
-			if strings.ToLower(tokens[i]) == mysql.TK_STR_SET {
-				DBName, tableName := sqlparser.GetDBTable(tokens[i-1])
-				//if the token[i+1] like this:kingshard.test_shard_hash
-				if DBName != "" {
-					ruleDB = DBName
-					if ruleDB != c.db {
-						return nil, errors.ErrDBNotAllow
-					}
-				} else {
-					ruleDB = c.db
+	for i := 0; i < tokensLen; i++ {
+		if strings.ToLower(tokens[i]) == mysql.TK_STR_SET {
+			DBName, tableName := sqlparser.GetDBTable(tokens[i-1])
+			//if the token[i+1] like this:kingshard.test_shard_hash
+			if DBName != "" {
+				ruleDB = DBName
+				if ruleDB != c.db {
+					return nil, errors.ErrDBNotAllow
 				}
-				if schema.rule.GetRule(ruleDB, tableName) != schema.rule.DefaultRule {
-					return nil, nil
-				} else {
-					break
-				}
+			} else {
+				ruleDB = c.db
+			}
+			if schema.HasRules() && schema.rule.GetRule(ruleDB, tableName) != schema.rule.DefaultRule {
+				return nil, nil
+			} else {
+				break
 			}
 		}
 	}
@@ -521,12 +494,7 @@ func (c *ClientConn) getTruncateExecDB(sql string, tokens []string, tokensLen in
 	executeDB.sql = sql
 	schema := c.proxy.schema
 
-	checkRule := false
-	if schema.IsUsed() {
-		checkRule = len(schema.rule.Rules) != 0
-	}
-
-	if checkRule && tokensLen >= 2 {
+	if tokensLen >= 2 {
 		DBName, tableName := sqlparser.GetDBTable(tokens[tokensLen-1])
 		//if the token[i+1] like this:kingshard.test_shard_hash
 		if DBName != "" {
@@ -537,7 +505,7 @@ func (c *ClientConn) getTruncateExecDB(sql string, tokens []string, tokensLen in
 		} else {
 			ruleDB = c.db
 		}
-		if schema.rule.GetRule(ruleDB, tableName) != schema.rule.DefaultRule {
+		if schema.HasRules() && schema.rule.GetRule(ruleDB, tableName) != schema.rule.DefaultRule {
 			return nil, nil
 		}
 	}

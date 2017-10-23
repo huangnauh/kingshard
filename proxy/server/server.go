@@ -49,6 +49,13 @@ func (s *Schema) NeedTry(err error) bool {
 	return s.IsUsed() && err == errors.ErrNoDBNode
 }
 
+func (s *Schema) HasRules() bool {
+	if s.IsUsed() {
+		return len(s.rule.Rules) > 0
+	}
+	return false
+}
+
 type BlacklistSqls struct {
 	sqls    map[string]string
 	sqlsLen int
