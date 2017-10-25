@@ -34,6 +34,17 @@ func (c *ClientConn) handleUseDB(dbName string) error {
 	//	return mysql.NewDefaultError(mysql.ER_NO_DB_ERROR)
 	//}
 
+	if c.db == "" {
+		user, password, err := c.proxy.GetUserByDatabase(dbName)
+		if err != nil {
+			return err
+		}
+		if err := c.CheckPassword(user, password); err != nil {
+			return err
+		}
+		c.db = dbName
+	}
+
 	if c.db != dbName {
 		return errors.ErrNoDBExist
 	}

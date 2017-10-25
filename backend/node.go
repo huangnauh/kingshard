@@ -254,6 +254,7 @@ func (n *Node) UpDB(addr string) (*DB, error) {
 }
 
 func (n *Node) UpMaster(addr string) error {
+	golog.Debug("Node", "UpMaster", addr, 0)
 	db, err := n.UpDB(addr)
 	if err != nil {
 		golog.Error("Node", "UpMaster", err.Error(), 0)
@@ -263,6 +264,7 @@ func (n *Node) UpMaster(addr string) error {
 }
 
 func (n *Node) UpSlave(addr string) error {
+	golog.Debug("Node", "UpSlave", addr, 0)
 	db, err := n.UpDB(addr)
 	if err != nil {
 		golog.Error("Node", "UpSlave", err.Error(), 0)
@@ -283,6 +285,8 @@ func (n *Node) UpSlave(addr string) error {
 }
 
 func (n *Node) DownMaster(addr string, state int32) error {
+	golog.Debug("Node", "DownMaster",
+		fmt.Sprintf("set addr %s to %s", addr, State_Name[state]), 0)
 	db := n.Master
 	if db == nil || db.addr != addr {
 		return errors.ErrNoMasterDB
@@ -294,6 +298,8 @@ func (n *Node) DownMaster(addr string, state int32) error {
 }
 
 func (n *Node) DownSlave(addr string, state int32) error {
+	golog.Debug("Node", "DownSlave",
+		fmt.Sprintf("set addr %s to %s", addr, State_Name[state]), 0)
 	n.RLock()
 	if n.Slave == nil {
 		n.RUnlock()

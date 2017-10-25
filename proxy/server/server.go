@@ -289,15 +289,16 @@ func (s *Server) GetNodeByDatabase(db string) (*backend.Node, error) {
 	return n, nil
 }
 
-
 func (s *Server) GetUserByDatabase(db string) (string, string, error) {
 	d, ok := s.databases[db]
 	if !ok {
-		golog.Error("server", "GetUserByDatabase", errors.ErrNoDBExist.Error(), 0)
+		golog.Error("server", "GetUserByDatabase",
+			fmt.Sprintf("database %s not exist", db), 0)
 		return "", "", errors.ErrNoDBExist
 	}
 	if d == nil {
-		golog.Error("server", "GetUserByDatabase", errors.ErrNoDBExist.Error(), 0)
+		golog.Error("server", "GetUserByDatabase",
+			fmt.Sprintf("database %s not exist", db), 0)
 		return "", "", errors.ErrNoDBExist
 	}
 
@@ -416,6 +417,7 @@ func (s *Server) newClientConn(co net.Conn) *ClientConn {
 func (s *Server) onConn(c net.Conn) {
 	s.counter.IncrClientConns()
 	conn := s.newClientConn(c) //新建一个conn
+	golog.Debug("Server", "onConn", "new client conn", 0)
 
 	defer func() {
 		err := recover()

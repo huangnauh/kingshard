@@ -203,7 +203,7 @@ func (c *ClientConn) GetExecDB(tokens []string, sql string) (*ExecuteDB, error) 
 func (c *ClientConn) setExecuteNode(tokens []string, tokensLen int, executeDB *ExecuteDB) error {
 	if 2 <= tokensLen {
 		//for /*node1*/
-		golog.Debug("ClientConn", "setExecuteNode", strings.Join(tokens, " "), 0)
+		golog.Debug("ClientConn", "setExecuteNode", fmt.Sprintf("%s", tokens), 0)
 		if 1 < len(tokens) && tokens[0][0] == mysql.COMMENT_PREFIX {
 			nodeName := strings.Trim(tokens[0], mysql.COMMENT_STRING)
 			if c.proxy.nodes[nodeName] != nil {

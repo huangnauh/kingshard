@@ -113,17 +113,20 @@ func (db *DB) Addr() string {
 	return db.addr
 }
 
+func (db *DB) IsDown() bool {
+	state := atomic.LoadInt32(&(db.state))
+	return state == Down || state == ManualDown
+}
+
+var State_Name = map[int32]string{
+	Up:         "up",
+	Down:       "down",
+	ManualDown: "manual down",
+	Unknown:    "unknow",
+}
+
 func (db *DB) State() string {
-	var state string
-	switch db.state {
-	case Up:
-		state = "up"
-	case Down, ManualDown:
-		state = "down"
-	case Unknown:
-		state = "unknow"
-	}
-	return state
+	return State_Name[db.state]
 }
 
 func (db *DB) IdleConnCount() int {

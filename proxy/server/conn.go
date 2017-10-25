@@ -48,6 +48,7 @@ type ClientConn struct {
 
 	user string
 	db   string
+	auth []byte
 
 	salt []byte
 
@@ -220,7 +221,7 @@ func (c *ClientConn) readHandshakeResponse() error {
 	//auth length and auth
 	authLen := int(data[pos])
 	pos++
-	auth := data[pos : pos+authLen]
+	c.auth = data[pos : pos+authLen]
 
 	pos += authLen
 
@@ -232,8 +233,14 @@ func (c *ClientConn) readHandshakeResponse() error {
 
 		db = string(data[pos : pos+bytes.IndexByte(data[pos:], 0)])
 		pos += len(c.db) + 1
-
 	}
+
+	if db == "" {
+		//TODO: support simple select
+		golog.Warn("ClientConn", "readHandshakeResponse", "db not find", 0)
+		return nil
+	}
+
 	c.db = db
 
 	user, password, err := c.proxy.GetUserByDatabase(db)
@@ -241,17 +248,20 @@ func (c *ClientConn) readHandshakeResponse() error {
 		return err
 	}
 
+	return c.CheckPassword(user, password)
+}
+
+func (c *ClientConn) CheckPassword(user, password string) error {
 	checkAuth := mysql.CalcPassword(c.salt, []byte(password))
-	if c.user != user || !bytes.Equal(auth, checkAuth) {
-		golog.Error("ClientConn", "readHandshakeResponse", "error", 0,
-			"auth", auth,
+	if c.user != user || !bytes.Equal(c.auth, checkAuth) {
+		golog.Error("ClientConn", "CheckPassword", "error", 0,
+			"auth", c.auth,
 			"checkAuth", checkAuth,
 			"client_user", c.user,
 			"config_set_user", user,
 			"passworld", password)
 		return mysql.NewDefaultError(mysql.ER_ACCESS_DENIED_ERROR, c.user, c.c.RemoteAddr().String(), "Yes")
 	}
-
 	return nil
 }
 
