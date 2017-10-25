@@ -15,6 +15,7 @@
 package backend
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 	"sync"
@@ -67,6 +68,7 @@ func (n *Node) GetMasterConn() (*BackendConn, error) {
 		return nil, errors.ErrNoMasterConn
 	}
 	if atomic.LoadInt32(&(db.state)) == Down {
+		golog.Error("Node", "GetMasterConn", errors.ErrMasterDown.Error(), 0)
 		return nil, errors.ErrMasterDown
 	}
 
@@ -78,13 +80,16 @@ func (n *Node) GetSlaveConn() (*BackendConn, error) {
 	db, err := n.GetNextSlave()
 	n.Unlock()
 	if err != nil {
+		golog.Error("Node", "GetSlaveConn", err.Error(), 0)
 		return nil, err
 	}
 
 	if db == nil {
+		golog.Error("Node", "GetSlaveConn", errors.ErrNoSlaveDB.Error(), 0)
 		return nil, errors.ErrNoSlaveDB
 	}
 	if atomic.LoadInt32(&(db.state)) == Down {
+		golog.Error("Node", "GetSlaveConn", fmt.Sprintf("slave: %s", db), 0)
 		return nil, errors.ErrSlaveDown
 	}
 
@@ -347,7 +352,8 @@ func (n *Node) ParseSlave(slaveStr string) error {
 		}
 		n.SlaveWeights = append(n.SlaveWeights, weight)
 		if db, err = n.OpenDB(addrAndWeight[0]); err != nil {
-			return err
+			golog.Error("Node", "ParseSlave", err.Error(), 0)
+			//return err
 		}
 		n.Slave = append(n.Slave, db)
 	}

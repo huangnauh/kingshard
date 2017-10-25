@@ -458,3 +458,44 @@ func (r *Resultset) GetStringByName(row int, name string) (string, error) {
 		return r.GetString(row, column)
 	}
 }
+
+type Filter interface {
+	Filter(*Resultset) (*Resultset, error)
+}
+
+func ApplyFilters(filters []Filter, r *Resultset) (*Resultset, error) {
+	var err error
+	for _, filter := range filters {
+		r, err = filter.Filter(r)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return r, nil
+}
+
+type DatabaseFilter struct {
+	DB string
+}
+
+func (f *DatabaseFilter) Filter(r *Resultset) (*Resultset, error) {
+	filterR := new(Resultset)
+	filterR.FieldNames = r.FieldNames
+	filterR.Fields = r.Fields
+	for index := range r.RowDatas {
+		db, err := r.GetStringByName(index, "Database")
+		if err != nil {
+			return nil, err
+		}
+		if db == f.DB {
+			filterR.Values = append(filterR.Values, r.Values[index])
+			filterR.RowDatas = append(filterR.RowDatas, r.RowDatas[index])
+		}
+	}
+	return filterR, nil
+}
+
+func NewDatabaseFilter(db string) *DatabaseFilter {
+	return &DatabaseFilter{DB: db}
+}

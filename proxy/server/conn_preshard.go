@@ -31,6 +31,7 @@ type ExecuteDB struct {
 	ExecNode *backend.Node
 	IsSlave  bool
 	sql      string
+	filters  []mysql.Filter
 }
 
 func (c *ClientConn) isBlacklistSql(sql string) bool {
@@ -112,8 +113,13 @@ func (c *ClientConn) preHandleShard(sql string) (bool, error) {
 	c.lastInsertId = int64(rs[0].InsertId)
 	c.affectedRows = int64(rs[0].AffectedRows)
 
-	if rs[0].Resultset != nil {
-		err = c.writeResultset(c.status, rs[0].Resultset)
+	r := rs[0].Resultset
+	if r != nil {
+		r, err = mysql.ApplyFilters(executeDB.filters, r)
+		if err != nil {
+			golog.Error("ClientConn", "ApplyFilters", err.Error(), 0, "sql", sql)
+		}
+		err = c.writeResultset(c.status, r)
 	} else {
 		err = c.writeOK(rs[0])
 	}
@@ -448,9 +454,52 @@ func (c *ClientConn) handleShowColumns(sql string, tokens []string,
 	for i := 0; i < tokensLen; i++ {
 		tokens[i] = strings.ToLower(tokens[i])
 		//handle SQL:
+
+		//SHOW CREATE DATABASE db_name
+		if tokens[i] == mysql.TK_STR_DB && i+1 < tokensLen {
+			ruleDB = strings.Trim(tokens[i+1], "`")
+			if ruleDB != c.db {
+				return errors.ErrDBNotAllow
+			}
+		}
+
+		//SHOW OPEN TABLES [FROM db_name] [like_or_where]
+		if tokens[i] == mysql.TK_STR_OPEN && i+1 < tokensLen {
+			if i+3 < tokensLen && strings.ToLower(tokens[i+2]) == mysql.TK_STR_FROM {
+				ruleDB = strings.Trim(tokens[i+3], "`")
+				if ruleDB != c.db {
+					return errors.ErrDBNotAllow
+				}
+			} else {
+				executeDB.filters = []mysql.Filter{mysql.NewDatabaseFilter(c.db)}
+			}
+		}
+
+		//SHOW DATABASES [like_or_where]
+		if tokens[i] == mysql.TK_STR_DBS {
+			executeDB.filters = []mysql.Filter{mysql.NewDatabaseFilter(c.db)}
+		}
+
+		//SHOW TABLE STATUS [FROM db_name] [like_or_where]
+		//SHOW [FULL] TABLES [FROM db_name] [like_or_where]
+		//SHOW TRIGGERS [FROM db_name] [like_or_where]
+		if (tokens[i] == mysql.TK_STR_TABLES ||
+			tokens[i] == mysql.TK_STR_STATUS ||
+			tokens[i] == mysql.TK_STR_TRIGGERS) &&
+			i+2 < tokensLen {
+			if strings.ToLower(tokens[i+1]) == mysql.TK_STR_FROM {
+				ruleDB = strings.Trim(tokens[i+1], "`")
+				if ruleDB != c.db {
+					return errors.ErrDBNotAllow
+				}
+			}
+		}
+
 		//SHOW [FULL] COLUMNS FROM tbl_name [FROM db_name] [like_or_where]
-		if (strings.ToLower(tokens[i]) == mysql.TK_STR_FIELDS ||
-			strings.ToLower(tokens[i]) == mysql.TK_STR_COLUMNS) &&
+		//SHOW INDEX FROM tbl_name [FROM db_name]
+		if (tokens[i] == mysql.TK_STR_FIELDS ||
+			tokens[i] == mysql.TK_STR_COLUMNS ||
+			tokens[i] == mysql.TK_STR_INDEX) &&
 			i+2 < tokensLen {
 			if strings.ToLower(tokens[i+1]) == mysql.TK_STR_FROM {
 				tableName := strings.Trim(tokens[i+2], "`")

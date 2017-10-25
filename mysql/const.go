@@ -208,8 +208,15 @@ var (
 	TK_STR_LAST_INSERT_ID = "last_insert_id()"
 	TK_STR_MASTER_HINT    = "*master*"
 	//show
-	TK_STR_COLUMNS = "columns"
-	TK_STR_FIELDS  = "fields"
+	TK_STR_COLUMNS  = "columns"
+	TK_STR_FIELDS   = "fields"
+	TK_STR_INDEX    = "index"
+	TK_STR_OPEN     = "open"
+	TK_STR_TABLES   = "tables"
+	TK_STR_STATUS   = "status"
+	TK_STR_TRIGGERS = "triggers"
+	TK_STR_DB       = "database"
+	TK_STR_DBS      = "databases"
 
 	SET_KEY_WORDS = map[string]struct{}{
 		"names": struct{}{},

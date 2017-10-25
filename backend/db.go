@@ -15,6 +15,7 @@
 package backend
 
 import (
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -75,7 +76,7 @@ func Open(addr string, user string, password string, dbName string, maxConnNum i
 	db.checkConn, err = db.newConn()
 	if err != nil {
 		db.Close()
-		return nil, err
+		return db, err
 	}
 
 	db.idleConns = make(chan *Conn, db.maxConnNum)
@@ -99,6 +100,13 @@ func Open(addr string, user string, password string, dbName string, maxConnNum i
 	db.SetLastPing()
 
 	return db, nil
+}
+
+func (db *DB) String() string {
+	if db == nil {
+		return "nil"
+	}
+	return fmt.Sprintf("addr: %s, state: %s", db.Addr(), db.State())
 }
 
 func (db *DB) Addr() string {
@@ -349,6 +357,13 @@ type BackendConn struct {
 	db *DB
 }
 
+func (p *BackendConn) String() string {
+	if p == nil {
+		return "conn db: nil"
+	}
+	return fmt.Sprintf("conn db: %s", p.db)
+}
+
 func (p *BackendConn) Close() {
 	if p != nil && p.Conn != nil {
 		if p.Conn.pkgErr != nil {
@@ -363,6 +378,7 @@ func (p *BackendConn) Close() {
 func (db *DB) GetConn() (*BackendConn, error) {
 	c, err := db.PopConn()
 	if err != nil {
+		golog.Error("db", "GetConn", err.Error(), 0)
 		return nil, err
 	}
 	return &BackendConn{c, db}, nil

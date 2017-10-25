@@ -140,6 +140,7 @@ func (c *ClientConn) getBackendConn(n *backend.Node, fromSlave bool) (co *backen
 		if fromSlave {
 			co, err = n.GetSlaveConn()
 			if err != nil {
+				golog.Error("ClientConn", "GetSlaveConn", err.Error(), 0)
 				co, err = n.GetMasterConn()
 			}
 		} else {

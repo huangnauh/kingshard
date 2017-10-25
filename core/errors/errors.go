@@ -23,6 +23,7 @@ var (
 	ErrNoSlaveConn   = errors.New("no slave connection")
 	ErrNoDBNode      = errors.New("no database node")
 	ErrDBNotAllow    = errors.New("database not allow")
+	ErrShowNotAllow  = errors.New("show not allow")
 	ErrNoDBExist     = errors.New("no database exist")
 	ErrNoNodeExist   = errors.New("no node exist")
 	ErrNoDefaultNode = errors.New("no default node")
