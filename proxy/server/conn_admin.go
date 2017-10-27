@@ -509,25 +509,6 @@ func (c *ClientConn) handleShowSchemaConfig() (*mysql.Resultset, error) {
 		"TableRowLimit",
 	}
 
-	//default Rule
-	if !c.schema.IsUsed() {
-		return new(mysql.Resultset), nil
-	}
-
-	var defaultRule = c.schema.rule.DefaultRule
-	rows = append(
-		rows,
-		[]string{
-			defaultRule.DB,
-			defaultRule.Table,
-			defaultRule.Type,
-			defaultRule.Key,
-			strings.Join(defaultRule.Nodes, ", "),
-			"",
-			"0",
-		},
-	)
-
 	schemaConfig := c.proxy.cfg.Schema
 	shardRule := schemaConfig.ShardRule
 

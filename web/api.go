@@ -238,12 +238,6 @@ type ShardConfig struct {
 func (s *ApiServer) GetProxySchema(c echo.Context) error {
 	schema := s.cfg.Schema
 	shardConfig := make([]ShardConfig, 0, 10)
-	//append default rule
-	shardConfig = append(shardConfig,
-		ShardConfig{
-			Type:  "default",
-			Nodes: schema.Nodes,
-		})
 	for _, r := range schema.ShardRule {
 		shardConfig = append(shardConfig,
 			ShardConfig{

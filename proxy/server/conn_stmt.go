@@ -55,9 +55,9 @@ func (s *Stmt) ResetParams() {
 }
 
 func (c *ClientConn) handleStmtPrepare(sql string) error {
-	//if c.schema == nil {
-	//	return mysql.NewDefaultError(mysql.ER_NO_DB_ERROR)
-	//}
+	if c.schema == nil {
+		return mysql.NewDefaultError(mysql.ER_NO_DB_ERROR)
+	}
 
 	s := new(Stmt)
 
@@ -71,7 +71,7 @@ func (c *ClientConn) handleStmtPrepare(sql string) error {
 
 	s.sql = sql
 
-	n, err := c.GetNode(true)
+	n, err := c.GetNode()
 	if err != nil {
 		return err
 	}
@@ -239,15 +239,15 @@ func (c *ClientConn) handleStmtExecute(data []byte) error {
 
 	switch stmt := s.s.(type) {
 	case *sqlparser.Select:
-		err = c.handleSelectInNode(stmt, s.sql, s.args, true)
+		err = c.handleSelectInNode(stmt, s.sql, s.args)
 	case *sqlparser.Insert:
-		err = c.handleExecInNode(s.s, s.sql, s.args, true)
+		err = c.handleExecInNode(s.s, s.sql, s.args)
 	case *sqlparser.Update:
-		err = c.handleExecInNode(s.s, s.sql, s.args, true)
+		err = c.handleExecInNode(s.s, s.sql, s.args)
 	case *sqlparser.Delete:
-		err = c.handleExecInNode(s.s, s.sql, s.args, true)
+		err = c.handleExecInNode(s.s, s.sql, s.args)
 	case *sqlparser.Replace:
-		err = c.handleExecInNode(s.s, s.sql, s.args, true)
+		err = c.handleExecInNode(s.s, s.sql, s.args)
 	default:
 		err = fmt.Errorf("command %T not supported now", stmt)
 	}
@@ -259,8 +259,8 @@ func (c *ClientConn) handleStmtExecute(data []byte) error {
 
 
 func (c *ClientConn) handleSelectInNode(stmt *sqlparser.Select, sql string,
-	args []interface{}, tryDefault bool) error {
-	node, err := c.GetNode(tryDefault)
+	args []interface{}) error {
+	node, err := c.GetNode()
 	if err != nil {
 		return err
 	}
@@ -296,8 +296,8 @@ func (c *ClientConn) handleSelectInNode(stmt *sqlparser.Select, sql string,
 }
 
 func (c *ClientConn) handleExecInNode(stmt sqlparser.Statement, sql string,
-	args []interface{}, tryDefault bool) error {
-	node, err := c.GetNode(tryDefault)
+	args []interface{}) error {
+	node, err := c.GetNode()
 	if err != nil {
 		return err
 	}

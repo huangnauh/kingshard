@@ -37,24 +37,23 @@ import (
 )
 
 type Schema struct {
-	nodes map[string]*backend.Node
-	rule  *router.Router
+	//nodes map[string]*backend.Node
+	rule *router.Router
 }
 
-func (s *Schema) IsUsed() bool {
-	return s.rule != nil
-}
-
-func (s *Schema) NeedTry(err error) bool {
-	return s.IsUsed() && err == errors.ErrNoDBNode
-}
-
-func (s *Schema) HasRules() bool {
-	if s.IsUsed() {
-		return len(s.rule.Rules) > 0
-	}
-	return false
-}
+//func (s *Schema) NeedTry(err error) bool {
+//	return s.HasRules() && err == errors.ErrNoDBNode
+//}
+//
+//func (s *Schema) HasRules() bool {
+//	if s.rule == nil {
+//		return false
+//	}
+//	if len(s.rule.Rules) == 0 {
+//		return false
+//	}
+//	return true
+//}
 
 type BlacklistSqls struct {
 	sqls    map[string]string
@@ -85,10 +84,9 @@ type Server struct {
 	allowipsIndex      int32
 	allowips           [2][]net.IP
 
-	counter   *Counter
-	nodes     map[string]*backend.Node
-	schema    *Schema
-	databases map[string]*database.Database
+	counter *Counter
+	nodes   map[string]*backend.Node
+	schema  *Schema
 
 	listener net.Listener
 	running  bool
@@ -207,43 +205,64 @@ func (s *Server) parseNodes() error {
 	return nil
 }
 
+func contains(slice []string, item string) bool {
+	for _, elem := range slice {
+		if item == elem {
+			return true
+		}
+	}
+	return false
+}
+
 func (s *Server) parseSchema() error {
 	schemaCfg := s.cfg.Schema
-	if len(schemaCfg.Nodes) == 0 {
-		//return fmt.Errorf("schema must have a node")
-		s.schema = &Schema{}
-		return nil
+	rt := new(router.Router)
+	rt.Rules = make(map[string]map[string]*router.Rule)
+	rt.Databases = make(map[string]*database.Database)
+	schema := &Schema{
+		rule: rt,
 	}
+	s.schema = schema
 
-	nodes := make(map[string]*backend.Node)
-	for _, n := range schemaCfg.Nodes {
-		if s.GetNode(n) == nil {
-			return fmt.Errorf("schema node [%s] config is not exists", n)
-		}
-
-		if _, ok := nodes[n]; ok {
-			return fmt.Errorf("schema node [%s] duplicate", n)
-		}
-
-		nodes[n] = s.GetNode(n)
-	}
-
-	rule, err := router.NewRouter(&schemaCfg)
-	if err != nil {
+	if err := s.parseDatabase(); err != nil {
 		return err
 	}
 
-	s.schema = &Schema{
-		nodes: nodes,
-		rule:  rule,
-	}
+	for _, shard := range schemaCfg.ShardRule {
+		rule, err := router.ParseRule(&shard)
+		if err != nil {
+			return err
+		}
 
+		db := rt.Databases[rule.DB]
+		if db == nil {
+			return fmt.Errorf("invalid database [%s].", rule.DB)
+		}
+
+		for _, node := range shard.Nodes {
+			if ok := contains(db.Cfg.Nodes, node); !ok {
+				return fmt.Errorf("invalid node [%s].", node)
+			}
+		}
+
+		//if the database exist in rules
+		if _, ok := rt.Rules[rule.DB]; ok {
+			if _, ok := rt.Rules[rule.DB][rule.Table]; ok {
+				return fmt.Errorf("table %s rule in %s duplicate", rule.Table, rule.DB)
+			} else {
+				rt.Rules[rule.DB][rule.Table] = rule
+			}
+		} else {
+			m := make(map[string]*router.Rule)
+			rt.Rules[rule.DB] = m
+			rt.Rules[rule.DB][rule.Table] = rule
+		}
+	}
 	return nil
 }
 
 func (s *Server) parseDatabase() error {
-	s.databases = make(map[string]*database.Database)
-	dbCfg := s.cfg.Databases
+	dbCfg := s.cfg.Schema.Databases
 	for index := range dbCfg {
 		c := dbCfg[index]
 		nodes := make(map[string]bool)
@@ -260,23 +279,13 @@ func (s *Server) parseDatabase() error {
 		}
 		db := new(database.Database)
 		db.ParseDatabase(&c)
-		s.databases[c.DB] = db
+		s.schema.rule.Databases[c.DB] = db
 	}
 	return nil
 }
 
 func (s *Server) GetNodeByDatabase(db string) (*backend.Node, error) {
-	d, ok := s.databases[db]
-	if !ok {
-		golog.Error("server", "GetNodeByDatabase", errors.ErrNoDBExist.Error(), 0)
-		return nil, errors.ErrNoDBExist
-	}
-	if d == nil {
-		golog.Error("server", "GetNodeByDatabase", errors.ErrNoDBExist.Error(), 0)
-		return nil, errors.ErrNoDBExist
-	}
-
-	node, err := d.GetNextNode()
+	node, err := s.schema.rule.GetNodeByDatabase(db)
 	if err != nil {
 		return nil, err
 	}
@@ -290,19 +299,7 @@ func (s *Server) GetNodeByDatabase(db string) (*backend.Node, error) {
 }
 
 func (s *Server) GetUserByDatabase(db string) (string, string, error) {
-	d, ok := s.databases[db]
-	if !ok {
-		golog.Error("server", "GetUserByDatabase",
-			fmt.Sprintf("database %s not exist", db), 0)
-		return "", "", errors.ErrNoDBExist
-	}
-	if d == nil {
-		golog.Error("server", "GetUserByDatabase",
-			fmt.Sprintf("database %s not exist", db), 0)
-		return "", "", errors.ErrNoDBExist
-	}
-
-	return d.Cfg.User, d.Cfg.Password, nil
+	return s.schema.rule.GetUserByDatabase(db)
 }
 
 func NewServer(cfg *config.Config) (*Server, error) {
@@ -345,10 +342,6 @@ func NewServer(cfg *config.Config) (*Server, error) {
 	}
 
 	if err := s.parseSchema(); err != nil {
-		return nil, err
-	}
-
-	if err := s.parseDatabase(); err != nil {
 		return nil, err
 	}
 

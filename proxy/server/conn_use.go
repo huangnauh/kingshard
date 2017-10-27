@@ -18,7 +18,7 @@ import (
 	"fmt"
 
 	"kingshard/backend"
-	//"kingshard/mysql"
+	"kingshard/mysql"
 	"kingshard/core/errors"
 )
 
@@ -30,9 +30,9 @@ func (c *ClientConn) handleUseDB(dbName string) error {
 		return fmt.Errorf("must have database, the length of dbName is zero")
 	}
 
-	//if c.schema == nil {
-	//	return mysql.NewDefaultError(mysql.ER_NO_DB_ERROR)
-	//}
+	if c.schema == nil {
+		return mysql.NewDefaultError(mysql.ER_NO_DB_ERROR)
+	}
 
 	if c.db == "" {
 		user, password, err := c.proxy.GetUserByDatabase(dbName)
@@ -49,7 +49,7 @@ func (c *ClientConn) handleUseDB(dbName string) error {
 		return errors.ErrNoDBExist
 	}
 
-	node, err := c.GetNode(true)
+	node, err := c.GetNode()
 	if err != nil {
 		return err
 	}

@@ -13,20 +13,20 @@ web_password : admin
 
 # if set log_path, the sql log will write into log_path/sql.log,the system log
 # will write into log_path/sys.log
-#log_path : /Users/flike/log
+#log_path : /Users/huangnauh/play/upai/new/hancock/kingshard
 
 # log level[debug|info|warn|error],default error
 log_level : debug
 
 # if set log_sql(on|off) off,the sql log will not output
-#log_sql: off
+#log_sql: on
 
 # only log the query that take more than slow_log_time ms
-#slow_log_time : 100
+#slow_log_time : 10
 
 # blacklist sql file path
 # all these sqls in this file will been forbidden by kingshard
-#blacklist_sql_file: /Users/flike/blacklist
+#blacklist_sql_file: /Users/huangnauh/play/upai/new/hancock/kingshard/blacklist
 
 # only allow this ip list ip to connect kingshard
 #allow_ips: 127.0.0.1
@@ -48,11 +48,11 @@ nodes :
     password : runner123456
 
     # master represents a real mysql master server
-    master : 10.0.0.193:3306
+    master : 10.0.5.108:3306
 
     # slave represents a real mysql salve server,and the number after '@' is
     # read load weight of this slave.
-    slave : 10.0.0.193:3306
+    slave : 10.0.5.108:3306,10.0.0.193:3306
     down_after_noalive : 32
 
 -
@@ -69,7 +69,7 @@ nodes :
     master : 10.0.5.108:3306
 
     # slave represents a real mysql salve server
-    slave : 10.0.5.108:3306
+    slave : 10.0.0.193:3306
 
     # down mysql after N seconds noalive
     # 0 will no down
@@ -78,20 +78,18 @@ nodes :
 
 # schema defines which db can be used by client and this db's sql will be executed in which nodes, 
 # the db is also the default database
-#schema :
-#    nodes: [node1, node2]
-#    default: node1
-#    shard:
-#    -
+schema :
+    databases:
+    -
+      db: upyun
+      user: root1
+      password: root1
+      nodes: [node1]
+    -
+      db: upyun_api
+      user: root2
+      password: root2
+      nodes: [node2]
 
-databases:
+    shard:
     -
-     db: transcoding
-     user: root1
-     password: root1
-     nodes: [node1]
-    -
-     db: banma
-     user: root2
-     password: root2
-     nodes: [node2]

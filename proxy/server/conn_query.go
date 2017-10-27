@@ -109,29 +109,20 @@ func (c *ClientConn) handleQuery(sql string) (err error) {
 	return nil
 }
 
-func (c *ClientConn) GetNode(tryDefault bool) (*backend.Node, error) {
-	node, err := c.proxy.GetNodeByDatabase(c.db)
-	if !tryDefault || !c.schema.NeedTry(err) {
-		return node, err
-	}
-
-	defaultRule := c.schema.rule.DefaultRule
-	if len(defaultRule.Nodes) == 0 {
-		golog.Error("server", "GetNode", errors.ErrNoDefaultNode.Error(), 0)
-		return nil, errors.ErrNoDefaultNode
-	}
-	node = c.proxy.GetNode(defaultRule.Nodes[0])
-	return node, nil
+func (c *ClientConn) GetNode() (*backend.Node, error) {
+	return c.proxy.GetNodeByDatabase(c.db)
 }
 
 func (c *ClientConn) GetNodeByTable(table string) (*backend.Node, error) {
-	n, err := c.proxy.GetNodeByDatabase(c.db)
-	if !c.schema.NeedTry(err) {
-		return n, err
+	rule := c.schema.rule.GetRule(c.db, table)
+	if rule == nil {
+		return c.proxy.GetNodeByDatabase(c.db)
 	}
-
-	nodeName := c.schema.rule.GetRule(c.db, table).Nodes[0]
-	n = c.proxy.GetNode(nodeName)
+	nodeName := rule.Nodes[0]
+	n := c.proxy.GetNode(nodeName)
+	if n == nil {
+		return nil, errors.ErrNoNodeExist
+	}
 	return n, nil
 }
 
@@ -193,16 +184,23 @@ func (c *ClientConn) getBackendConn(n *backend.Node, fromSlave bool) (co *backen
 //获取shard的conn，第一个参数表示是不是select
 func (c *ClientConn) getShardConns(fromSlave bool, plan *router.Plan) (map[string]*backend.BackendConn, error) {
 	var err error
+	var nodes []*backend.Node
 	if plan == nil || len(plan.RouteNodeIndexs) == 0 {
-		return nil, errors.ErrNoRouteNode
+		node, err := c.GetNode()
+		if err != nil {
+			return nil, err
+		}
+		nodes = make([]*backend.Node, 0, 1)
+		nodes = append(nodes, node)
+	} else {
+		nodesCount := len(plan.RouteNodeIndexs)
+		nodes = make([]*backend.Node, 0, nodesCount)
+		for i := 0; i < nodesCount; i++ {
+			nodeIndex := plan.RouteNodeIndexs[i]
+			nodes = append(nodes, c.proxy.GetNode(plan.Rule.Nodes[nodeIndex]))
+		}
 	}
 
-	nodesCount := len(plan.RouteNodeIndexs)
-	nodes := make([]*backend.Node, 0, nodesCount)
-	for i := 0; i < nodesCount; i++ {
-		nodeIndex := plan.RouteNodeIndexs[i]
-		nodes = append(nodes, c.proxy.GetNode(plan.Rule.Nodes[nodeIndex]))
-	}
 	if c.isInTransaction() {
 		if 1 < len(nodes) {
 			return nil, errors.ErrTransInMulti
@@ -383,11 +381,6 @@ func (c *ClientConn) newEmptyResultset(stmt *sqlparser.Select) *mysql.Resultset 
 }
 
 func (c *ClientConn) handleExec(stmt sqlparser.Statement, sql string, args []interface{}) error {
-	err := c.handleExecInNode(stmt, sql, args, false)
-	if !c.schema.NeedTry(err) {
-		return err
-	}
-
 	plan, err := c.schema.rule.BuildPlan(c.db, stmt)
 	if err != nil {
 		return err

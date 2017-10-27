@@ -23,6 +23,7 @@ import (
 	"kingshard/core/errors"
 	"kingshard/core/golog"
 	"kingshard/sqlparser"
+	"fmt"
 )
 
 const (
@@ -46,6 +47,10 @@ type Plan struct {
 	RouteTableIndexs    []int
 	RouteNodeIndexs     []int
 	RewrittenSqls       map[string][]string
+}
+
+func (plan *Plan) String() string {
+	return fmt.Sprintf("rule: %s", plan.Rule)
 }
 
 func (plan *Plan) rewriteWhereIn(tableIndex int) (sqlparser.ValExpr, error) {
@@ -282,18 +287,15 @@ func (plan *Plan) getDateShardTableIndex(expr sqlparser.BoolExpr) ([]int, error)
 //计算表下标和node下标
 func (plan *Plan) calRouteIndexs() error {
 	var err error
-	nodesCount := len(plan.Rule.Nodes)
-
-	if plan.Rule.Type == DefaultRuleType {
-		plan.RouteNodeIndexs = []int{0}
+	if plan.Rule == nil {
 		return nil
 	}
+	nodesCount := len(plan.Rule.Nodes)
+
 	if plan.Criteria == nil { //如果没有分表条件，则是全子表扫描
-		if plan.Rule.Type != DefaultRuleType {
-			golog.Error("Plan", "calRouteIndexs", "plan have no criteria", 0,
-				"type", plan.Rule.Type)
-			return errors.ErrNoCriteria
-		}
+		golog.Error("Plan", "calRouteIndexs", "plan have no criteria", 0,
+			"type", plan.Rule.Type)
+		return errors.ErrNoCriteria
 	}
 
 	switch criteria := plan.Criteria.(type) {

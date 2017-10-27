@@ -21,11 +21,12 @@ import (
 	"kingshard/config"
 	"kingshard/core/errors"
 	"kingshard/core/golog"
+	"kingshard/proxy/database"
 	"kingshard/sqlparser"
 )
 
 var (
-	DefaultRuleType   = "default"
+	//DefaultRuleType   = "default"
 	HashRuleType      = "hash"
 	RangeRuleType     = "range"
 	DateYearRuleType  = "date_year"
@@ -50,19 +51,17 @@ type Rule struct {
 
 type Router struct {
 	//map[db]map[table_name]*Rule
-	Rules       map[string]map[string]*Rule
-	DefaultRule *Rule
-	Nodes       []string //just for human saw
+	Rules     map[string]map[string]*Rule
+	Databases map[string]*database.Database
+	//DefaultRule *Rule
+	//Nodes []string //just for human saw
 }
 
-func NewDefaultRule(node string) *Rule {
-	var r *Rule = &Rule{
-		Type:        DefaultRuleType,
-		Nodes:       []string{node},
-		Shard:       new(DefaultShard),
-		TableToNode: nil,
+func (r *Rule) String() string {
+	if r == nil {
+		return "nil"
 	}
-	return r
+	return fmt.Sprintf("db: %s, table: %s", r.DB, r.Table)
 }
 
 func (r *Rule) FindNode(key interface{}) (string, error) {
@@ -88,9 +87,7 @@ func (r *Rule) FindTableIndex(key interface{}) (int, error) {
 
 //UpdateExprs is the expression after set
 func (r *Rule) checkUpdateExprs(exprs sqlparser.UpdateExprs) error {
-	if r.Type == DefaultRuleType {
-		return nil
-	} else if len(r.Nodes) == 1 {
+	if len(r.Nodes) == 1 {
 		return nil
 	}
 
@@ -102,66 +99,25 @@ func (r *Rule) checkUpdateExprs(exprs sqlparser.UpdateExprs) error {
 	return nil
 }
 
-//NewRouter build router according to the config file
-func NewRouter(schemaConfig *config.SchemaConfig) (*Router, error) {
-	if !includeNode(schemaConfig.Nodes, schemaConfig.Default) {
-		return nil, fmt.Errorf("default node[%s] not in the nodes list",
-			schemaConfig.Default)
-	}
-
-	rt := new(Router)
-	rt.Nodes = schemaConfig.Nodes //对应schema中的nodes
-	rt.Rules = make(map[string]map[string]*Rule)
-	rt.DefaultRule = NewDefaultRule(schemaConfig.Default)
-
-	for _, shard := range schemaConfig.ShardRule {
-		for _, node := range shard.Nodes {
-			if !includeNode(rt.Nodes, node) {
-				return nil, fmt.Errorf("shard table[%s] node[%s] not in the schema.nodes list:[%s]",
-					shard.Table, node, strings.Join(shard.Nodes, ","))
-			}
-		}
-		rule, err := parseRule(&shard)
-		if err != nil {
-			return nil, err
-		}
-
-		if rule.Type == DefaultRuleType {
-			return nil, fmt.Errorf("[default-rule] duplicate, must only one")
-		}
-		//if the database exist in rules
-		if _, ok := rt.Rules[rule.DB]; ok {
-			if _, ok := rt.Rules[rule.DB][rule.Table]; ok {
-				return nil, fmt.Errorf("table %s rule in %s duplicate", rule.Table, rule.DB)
-			} else {
-				rt.Rules[rule.DB][rule.Table] = rule
-			}
-		} else {
-			m := make(map[string]*Rule)
-			rt.Rules[rule.DB] = m
-			rt.Rules[rule.DB][rule.Table] = rule
-		}
-	}
-	return rt, nil
-}
-
 func (r *Router) GetRule(db, table string) *Rule {
+	if len(r.Rules) == 0 {
+		return nil
+	}
+
+	ruleTable := r.Rules[db]
+	if len(ruleTable) == 0 {
+		return nil
+	}
+
 	arry := strings.Split(table, ".")
 	if len(arry) == 2 {
 		table = strings.Trim(arry[1], "`")
 		db = strings.Trim(arry[0], "`")
 	}
-	rule := r.Rules[db][table]
-	if rule == nil {
-		//set the database of default rule
-		r.DefaultRule.DB = db
-		return r.DefaultRule
-	} else {
-		return rule
-	}
+	return ruleTable[table]
 }
 
-func parseRule(cfg *config.ShardConfig) (*Rule, error) {
+func ParseRule(cfg *config.ShardConfig) (*Rule, error) {
 	r := new(Rule)
 	r.DB = cfg.DB
 	r.Table = cfg.Table
@@ -271,6 +227,36 @@ func includeNode(nodes []string, node string) bool {
 	return false
 }
 
+func (r *Router) GetNodeByDatabase(db string) (string, error) {
+	d, ok := r.Databases[db]
+	if !ok {
+		golog.Error("server", "GetNodeByDatabase", errors.ErrNoDBExist.Error(), 0)
+		return "", errors.ErrNoDBExist
+	}
+	if d == nil {
+		golog.Error("server", "GetNodeByDatabase", errors.ErrNoDBExist.Error(), 0)
+		return "", errors.ErrNoDBExist
+	}
+
+	return d.GetNextNode()
+}
+
+func (r *Router) GetUserByDatabase(db string) (string, string, error) {
+	d, ok := r.Databases[db]
+	if !ok {
+		golog.Error("server", "GetUserByDatabase",
+			fmt.Sprintf("database %s not exist", db), 0)
+		return "", "", errors.ErrNoDBExist
+	}
+	if d == nil {
+		golog.Error("server", "GetUserByDatabase",
+			fmt.Sprintf("database %s not exist", db), 0)
+		return "", "", errors.ErrNoDBExist
+	}
+
+	return d.Cfg.User, d.Cfg.Password, nil
+}
+
 //build a router plan
 func (r *Router) BuildPlan(db string, statement sqlparser.Statement) (*Plan, error) {
 	//因为实现Statement接口的方法都是指针类型，所以type对应类型也是指针类型
@@ -312,6 +298,14 @@ func (r *Router) buildSelectPlan(db string, statement sqlparser.Statement) (*Pla
 	}
 
 	plan.Rule = r.GetRule(db, tableName) //根据表名获得分表规则
+	ok, err := r.CheckRule(plan, stmt)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return plan, nil
+	}
+
 	where = stmt.Where
 
 	if where != nil {
@@ -327,10 +321,10 @@ func (r *Router) buildSelectPlan(db string, statement sqlparser.Statement) (*Pla
 		plan.RouteNodeIndexs = makeList(0, len(plan.Rule.Nodes))
 	}
 
-	if plan.Rule.Type != DefaultRuleType && len(plan.RouteTableIndexs) == 0 {
-		golog.Error("Route", "BuildSelectPlan", errors.ErrNoCriteria.Error(), 0)
-		return nil, errors.ErrNoCriteria
+	if err := r.CheckPlan(plan); err != nil {
+		return nil, err
 	}
+
 	//generate sql,如果routeTableindexs为空则表示不分表，不分表则发default node
 	err = r.generateSelectSql(plan, stmt)
 	if err != nil {
@@ -353,8 +347,15 @@ func (r *Router) buildInsertPlan(db string, statement sqlparser.Statement) (*Pla
 
 	//根据sql语句的表，获得对应的分片规则
 	plan.Rule = r.GetRule(db, sqlparser.String(stmt.Table))
+	ok, err := r.CheckRule(plan, stmt)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return plan, nil
+	}
 
-	err := plan.GetIRKeyIndex(stmt.Columns)
+	err = plan.GetIRKeyIndex(stmt.Columns)
 	if err != nil {
 		return nil, err
 	}
@@ -378,6 +379,10 @@ func (r *Router) buildInsertPlan(db string, statement sqlparser.Statement) (*Pla
 		return nil, err
 	}
 
+	if err := r.CheckPlan(plan); err != nil {
+		return nil, err
+	}
+
 	err = r.generateInsertSql(plan, stmt)
 	if err != nil {
 		return nil, err
@@ -391,7 +396,15 @@ func (r *Router) buildUpdatePlan(db string, statement sqlparser.Statement) (*Pla
 
 	stmt := statement.(*sqlparser.Update)
 	plan.Rule = r.GetRule(db, sqlparser.String(stmt.Table))
-	err := plan.Rule.checkUpdateExprs(stmt.Exprs)
+	ok, err := r.CheckRule(plan, stmt)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return plan, nil
+	}
+
+	err = plan.Rule.checkUpdateExprs(stmt.Exprs)
 	if err != nil {
 		return nil, err
 	}
@@ -410,10 +423,10 @@ func (r *Router) buildUpdatePlan(db string, statement sqlparser.Statement) (*Pla
 		plan.RouteNodeIndexs = makeList(0, len(plan.Rule.Nodes))
 	}
 
-	if plan.Rule.Type != DefaultRuleType && len(plan.RouteTableIndexs) == 0 {
-		golog.Error("Route", "BuildUpdatePlan", errors.ErrNoCriteria.Error(), 0)
-		return nil, errors.ErrNoCriteria
+	if err := r.CheckPlan(plan); err != nil {
+		return nil, err
 	}
+
 	//generate sql,如果routeTableindexs为空则表示不分表，不分表则发default node
 	err = r.generateUpdateSql(plan, stmt)
 	if err != nil {
@@ -429,6 +442,14 @@ func (r *Router) buildDeletePlan(db string, statement sqlparser.Statement) (*Pla
 
 	stmt := statement.(*sqlparser.Delete)
 	plan.Rule = r.GetRule(db, sqlparser.String(stmt.Table))
+	ok, err := r.CheckRule(plan, stmt)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return plan, nil
+	}
+
 	where = stmt.Where
 
 	if where != nil {
@@ -444,9 +465,8 @@ func (r *Router) buildDeletePlan(db string, statement sqlparser.Statement) (*Pla
 		plan.RouteNodeIndexs = makeList(0, len(plan.Rule.Nodes))
 	}
 
-	if plan.Rule.Type != DefaultRuleType && len(plan.RouteTableIndexs) == 0 {
-		golog.Error("Route", "BuildDeletePlan", errors.ErrNoCriteria.Error(), 0)
-		return nil, errors.ErrNoCriteria
+	if err := r.CheckPlan(plan); err != nil {
+		return nil, err
 	}
 	//generate sql,如果routeTableindexs为空则表示不分表，不分表则发default node
 	err = r.generateDeleteSql(plan, stmt)
@@ -466,9 +486,8 @@ func (r *Router) buildTruncatePlan(db string, statement sqlparser.Statement) (*P
 	plan.RouteTableIndexs = plan.Rule.SubTableIndexs
 	plan.RouteNodeIndexs = makeList(0, len(plan.Rule.Nodes))
 
-	if plan.Rule.Type != DefaultRuleType && len(plan.RouteTableIndexs) == 0 {
-		golog.Error("Route", "buildTruncatePlan", errors.ErrNoCriteria.Error(), 0)
-		return nil, errors.ErrNoCriteria
+	if err := r.CheckPlan(plan); err != nil {
+		return nil, err
 	}
 	//generate sql,如果routeTableindexs为空则表示不分表，不分表则发default node
 	err = r.generateTruncateSql(plan, stmt)
@@ -507,6 +526,10 @@ func (r *Router) buildReplacePlan(db string, statement sqlparser.Statement) (*Pl
 	err = plan.calRouteIndexs()
 	if err != nil {
 		golog.Error("Route", "BuildReplacePlan", err.Error(), 0)
+		return nil, err
+	}
+
+	if err := r.CheckPlan(plan); err != nil {
 		return nil, err
 	}
 
@@ -647,239 +670,236 @@ func (r *Router) rewriteSelectSql(plan *Plan, node *sqlparser.Select, tableIndex
 	return buf.String()
 }
 
+func (r *Router) CheckPlan(plan *Plan) error {
+	if len(plan.RouteNodeIndexs) == 0 {
+		golog.Error("Route", "CheckPlan",
+			fmt.Sprintf("plan: %s, err: %s", plan, errors.ErrNoRouteNode), 0)
+		return errors.ErrNoRouteNode
+	}
+
+	if len(plan.RouteTableIndexs) == 0 {
+		golog.Error("Route", "CheckPlan",
+			fmt.Sprintf("plan: %s, err: %s", plan, errors.ErrNoCriteria), 0)
+		return errors.ErrNoCriteria
+	}
+	return nil
+}
+
+func (r *Router) CheckRule(plan *Plan, stmt sqlparser.Statement) (bool, error) {
+	if plan.Rule == nil {
+		buf := sqlparser.NewTrackedBuffer(nil)
+		stmt.Format(buf)
+		nodeName, err := r.GetNodeByDatabase(plan.Rule.DB)
+		if err != nil {
+			return false, err
+		}
+		sqls := make(map[string][]string, 1)
+		sqls[nodeName] = []string{buf.String()}
+		plan.RewrittenSqls = sqls
+		return false, nil
+	}
+	return true, nil
+}
+
 func (r *Router) generateSelectSql(plan *Plan, stmt sqlparser.Statement) error {
-	sqls := make(map[string][]string)
 	node, ok := stmt.(*sqlparser.Select)
 	if ok == false {
 		return errors.ErrStmtConvert
 	}
-	if len(plan.RouteNodeIndexs) == 0 {
-		return errors.ErrNoRouteNode
-	}
-	if len(plan.RouteTableIndexs) == 0 {
-		buf := sqlparser.NewTrackedBuffer(nil)
-		stmt.Format(buf)
-		nodeName := r.Nodes[0]
-		sqls[nodeName] = []string{buf.String()}
-	} else {
-		tableCount := len(plan.RouteTableIndexs)
-		for i := 0; i < tableCount; i++ {
-			tableIndex := plan.RouteTableIndexs[i]
-			nodeIndex := plan.Rule.TableToNode[tableIndex]
-			nodeName := r.Nodes[nodeIndex]
-			selectSql := r.rewriteSelectSql(plan, node, tableIndex)
-			if _, ok := sqls[nodeName]; ok == false {
-				sqls[nodeName] = make([]string, 0, tableCount)
-			}
-			sqls[nodeName] = append(sqls[nodeName], selectSql)
+
+	sqls := make(map[string][]string)
+	tableCount := len(plan.RouteTableIndexs)
+	for i := 0; i < tableCount; i++ {
+		tableIndex := plan.RouteTableIndexs[i]
+		nodeIndex := plan.Rule.TableToNode[tableIndex]
+		nodeName := plan.Rule.Nodes[nodeIndex]
+		selectSql := r.rewriteSelectSql(plan, node, tableIndex)
+		if _, ok := sqls[nodeName]; ok == false {
+			sqls[nodeName] = make([]string, 0, tableCount)
 		}
+		sqls[nodeName] = append(sqls[nodeName], selectSql)
 	}
 	plan.RewrittenSqls = sqls
 	return nil
 }
 
 func (r *Router) generateInsertSql(plan *Plan, stmt sqlparser.Statement) error {
-	sqls := make(map[string][]string)
 	node, ok := stmt.(*sqlparser.Insert)
 	if ok == false {
 		return errors.ErrStmtConvert
 	}
-	if len(plan.RouteNodeIndexs) == 0 {
-		return errors.ErrNoRouteNode
+
+	ok, err := r.CheckRule(plan, stmt)
+	if !ok {
+		return err
 	}
-	if len(plan.RouteTableIndexs) == 0 {
+
+	sqls := make(map[string][]string)
+	tableCount := len(plan.RouteTableIndexs)
+	for i := 0; i < tableCount; i++ {
 		buf := sqlparser.NewTrackedBuffer(nil)
-		stmt.Format(buf)
-		nodeName := r.Nodes[0]
-		sqls[nodeName] = []string{buf.String()}
-	} else {
-		tableCount := len(plan.RouteTableIndexs)
-		for i := 0; i < tableCount; i++ {
-			buf := sqlparser.NewTrackedBuffer(nil)
-			tableIndex := plan.RouteTableIndexs[i]
-			nodeIndex := plan.Rule.TableToNode[tableIndex]
-			nodeName := r.Nodes[nodeIndex]
+		tableIndex := plan.RouteTableIndexs[i]
+		nodeIndex := plan.Rule.TableToNode[tableIndex]
+		nodeName := plan.Rule.Nodes[nodeIndex]
 
-			buf.Fprintf("insert %v%s into %v", node.Comments, node.Ignore, node.Table)
-			fmt.Fprintf(buf, "_%04d", plan.RouteTableIndexs[i])
-			buf.Fprintf("%v %v%v",
-				node.Columns,
-				plan.Rows[tableIndex],
-				node.OnDup)
+		buf.Fprintf("insert %v%s into %v", node.Comments, node.Ignore, node.Table)
+		fmt.Fprintf(buf, "_%04d", plan.RouteTableIndexs[i])
+		buf.Fprintf("%v %v%v",
+			node.Columns,
+			plan.Rows[tableIndex],
+			node.OnDup)
 
-			if _, ok := sqls[nodeName]; ok == false {
-				sqls[nodeName] = make([]string, 0, tableCount)
-			}
-			sqls[nodeName] = append(sqls[nodeName], buf.String())
+		if _, ok := sqls[nodeName]; ok == false {
+			sqls[nodeName] = make([]string, 0, tableCount)
 		}
-
+		sqls[nodeName] = append(sqls[nodeName], buf.String())
 	}
+
 	plan.RewrittenSqls = sqls
 	return nil
 }
 
 func (r *Router) generateUpdateSql(plan *Plan, stmt sqlparser.Statement) error {
-	sqls := make(map[string][]string)
 	node, ok := stmt.(*sqlparser.Update)
 	if ok == false {
 		return errors.ErrStmtConvert
 	}
-	if len(plan.RouteNodeIndexs) == 0 {
-		return errors.ErrNoRouteNode
-	}
-	if len(plan.RouteTableIndexs) == 0 {
-		buf := sqlparser.NewTrackedBuffer(nil)
-		stmt.Format(buf)
-		nodeName := r.Nodes[0]
-		sqls[nodeName] = []string{buf.String()}
-	} else {
-		tableCount := len(plan.RouteTableIndexs)
-		for i := 0; i < tableCount; i++ {
-			buf := sqlparser.NewTrackedBuffer(nil)
-			buf.Fprintf("update %v%v",
-				node.Comments,
-				node.Table,
-			)
-			fmt.Fprintf(buf, "_%04d", plan.RouteTableIndexs[i])
-			buf.Fprintf(" set %v%v%v%v",
-				node.Exprs,
-				node.Where,
-				node.OrderBy,
-				node.Limit,
-			)
-			tableIndex := plan.RouteTableIndexs[i]
-			nodeIndex := plan.Rule.TableToNode[tableIndex]
-			nodeName := r.Nodes[nodeIndex]
-			if _, ok := sqls[nodeName]; ok == false {
-				sqls[nodeName] = make([]string, 0, tableCount)
-			}
-			sqls[nodeName] = append(sqls[nodeName], buf.String())
-		}
 
+	ok, err := r.CheckRule(plan, stmt)
+	if !ok {
+		return err
+	}
+
+	sqls := make(map[string][]string)
+	tableCount := len(plan.RouteTableIndexs)
+	for i := 0; i < tableCount; i++ {
+		buf := sqlparser.NewTrackedBuffer(nil)
+		buf.Fprintf("update %v%v",
+			node.Comments,
+			node.Table,
+		)
+		fmt.Fprintf(buf, "_%04d", plan.RouteTableIndexs[i])
+		buf.Fprintf(" set %v%v%v%v",
+			node.Exprs,
+			node.Where,
+			node.OrderBy,
+			node.Limit,
+		)
+		tableIndex := plan.RouteTableIndexs[i]
+		nodeIndex := plan.Rule.TableToNode[tableIndex]
+		nodeName := plan.Rule.Nodes[nodeIndex]
+		if _, ok := sqls[nodeName]; ok == false {
+			sqls[nodeName] = make([]string, 0, tableCount)
+		}
+		sqls[nodeName] = append(sqls[nodeName], buf.String())
 	}
 	plan.RewrittenSqls = sqls
 	return nil
 }
 
 func (r *Router) generateDeleteSql(plan *Plan, stmt sqlparser.Statement) error {
-	sqls := make(map[string][]string)
 	node, ok := stmt.(*sqlparser.Delete)
 	if ok == false {
 		return errors.ErrStmtConvert
 	}
-	if len(plan.RouteNodeIndexs) == 0 {
-		return errors.ErrNoRouteNode
+	ok, err := r.CheckRule(plan, stmt)
+	if !ok {
+		return err
 	}
-	if len(plan.RouteTableIndexs) == 0 {
-		buf := sqlparser.NewTrackedBuffer(nil)
-		stmt.Format(buf)
-		nodeName := r.Nodes[0]
-		sqls[nodeName] = []string{buf.String()}
-	} else {
-		tableCount := len(plan.RouteTableIndexs)
-		for i := 0; i < tableCount; i++ {
-			buf := sqlparser.NewTrackedBuffer(nil)
-			buf.Fprintf("delete %vfrom %v",
-				node.Comments,
-				node.Table,
-			)
-			fmt.Fprintf(buf, "_%04d", plan.RouteTableIndexs[i])
-			buf.Fprintf("%v%v%v",
-				node.Where,
-				node.OrderBy,
-				node.Limit,
-			)
-			tableIndex := plan.RouteTableIndexs[i]
-			nodeIndex := plan.Rule.TableToNode[tableIndex]
-			nodeName := r.Nodes[nodeIndex]
-			if _, ok := sqls[nodeName]; ok == false {
-				sqls[nodeName] = make([]string, 0, tableCount)
-			}
-			sqls[nodeName] = append(sqls[nodeName], buf.String())
-		}
 
+	sqls := make(map[string][]string)
+	tableCount := len(plan.RouteTableIndexs)
+	for i := 0; i < tableCount; i++ {
+		buf := sqlparser.NewTrackedBuffer(nil)
+		buf.Fprintf("delete %vfrom %v",
+			node.Comments,
+			node.Table,
+		)
+		fmt.Fprintf(buf, "_%04d", plan.RouteTableIndexs[i])
+		buf.Fprintf("%v%v%v",
+			node.Where,
+			node.OrderBy,
+			node.Limit,
+		)
+		tableIndex := plan.RouteTableIndexs[i]
+		nodeIndex := plan.Rule.TableToNode[tableIndex]
+		nodeName := plan.Rule.Nodes[nodeIndex]
+		if _, ok := sqls[nodeName]; ok == false {
+			sqls[nodeName] = make([]string, 0, tableCount)
+		}
+		sqls[nodeName] = append(sqls[nodeName], buf.String())
 	}
 	plan.RewrittenSqls = sqls
 	return nil
 }
 
 func (r *Router) generateReplaceSql(plan *Plan, stmt sqlparser.Statement) error {
-	sqls := make(map[string][]string)
 	node, ok := stmt.(*sqlparser.Replace)
 	if ok == false {
 		return errors.ErrStmtConvert
 	}
-	if len(plan.RouteNodeIndexs) == 0 {
-		return errors.ErrNoRouteNode
+	ok, err := r.CheckRule(plan, stmt)
+	if !ok {
+		return err
 	}
-	if len(plan.RouteTableIndexs) == 0 {
+
+	sqls := make(map[string][]string)
+	tableCount := len(plan.RouteTableIndexs)
+	for i := 0; i < tableCount; i++ {
+		tableIndex := plan.RouteTableIndexs[i]
+		nodeIndex := plan.Rule.TableToNode[tableIndex]
+		nodeName := plan.Rule.Nodes[nodeIndex]
+
 		buf := sqlparser.NewTrackedBuffer(nil)
-		stmt.Format(buf)
-		nodeName := r.Nodes[0]
-		sqls[nodeName] = []string{buf.String()}
-	} else {
-		tableCount := len(plan.RouteTableIndexs)
-		for i := 0; i < tableCount; i++ {
-			tableIndex := plan.RouteTableIndexs[i]
-			nodeIndex := plan.Rule.TableToNode[tableIndex]
-			nodeName := r.Nodes[nodeIndex]
+		buf.Fprintf("replace %vinto %v",
+			node.Comments,
+			node.Table,
+		)
+		fmt.Fprintf(buf, "_%04d", plan.RouteTableIndexs[i])
+		buf.Fprintf("%v %v",
+			node.Columns,
+			plan.Rows[tableIndex],
+		)
 
-			buf := sqlparser.NewTrackedBuffer(nil)
-			buf.Fprintf("replace %vinto %v",
-				node.Comments,
-				node.Table,
-			)
-			fmt.Fprintf(buf, "_%04d", plan.RouteTableIndexs[i])
-			buf.Fprintf("%v %v",
-				node.Columns,
-				plan.Rows[tableIndex],
-			)
-
-			if _, ok := sqls[nodeName]; ok == false {
-				sqls[nodeName] = make([]string, 0, tableCount)
-			}
-			sqls[nodeName] = append(sqls[nodeName], buf.String())
+		if _, ok := sqls[nodeName]; ok == false {
+			sqls[nodeName] = make([]string, 0, tableCount)
 		}
-
+		sqls[nodeName] = append(sqls[nodeName], buf.String())
 	}
 	plan.RewrittenSqls = sqls
 	return nil
 }
 
 func (r *Router) generateTruncateSql(plan *Plan, stmt sqlparser.Statement) error {
-	sqls := make(map[string][]string)
+
 	node, ok := stmt.(*sqlparser.Truncate)
 	if ok == false {
 		return errors.ErrStmtConvert
 	}
-	if len(plan.RouteNodeIndexs) == 0 {
-		return errors.ErrNoRouteNode
+	ok, err := r.CheckRule(plan, stmt)
+	if !ok {
+		return err
 	}
-	if len(plan.RouteTableIndexs) == 0 {
-		buf := sqlparser.NewTrackedBuffer(nil)
-		stmt.Format(buf)
-		nodeName := r.Nodes[0]
-		sqls[nodeName] = []string{buf.String()}
-	} else {
-		tableCount := len(plan.RouteTableIndexs)
-		for i := 0; i < tableCount; i++ {
-			buf := sqlparser.NewTrackedBuffer(nil)
-			buf.Fprintf("truncate %v%s%v",
-				node.Comments,
-				node.TableOpt,
-				node.Table,
-			)
-			fmt.Fprintf(buf, "_%04d", plan.RouteTableIndexs[i])
-			tableIndex := plan.RouteTableIndexs[i]
-			nodeIndex := plan.Rule.TableToNode[tableIndex]
-			nodeName := r.Nodes[nodeIndex]
-			if _, ok := sqls[nodeName]; ok == false {
-				sqls[nodeName] = make([]string, 0, tableCount)
-			}
-			sqls[nodeName] = append(sqls[nodeName], buf.String())
-		}
 
+	sqls := make(map[string][]string)
+	tableCount := len(plan.RouteTableIndexs)
+	for i := 0; i < tableCount; i++ {
+		buf := sqlparser.NewTrackedBuffer(nil)
+		buf.Fprintf("truncate %v%s%v",
+			node.Comments,
+			node.TableOpt,
+			node.Table,
+		)
+		fmt.Fprintf(buf, "_%04d", plan.RouteTableIndexs[i])
+		tableIndex := plan.RouteTableIndexs[i]
+		nodeIndex := plan.Rule.TableToNode[tableIndex]
+		nodeName := plan.Rule.Nodes[nodeIndex]
+		if _, ok := sqls[nodeName]; ok == false {
+			sqls[nodeName] = make([]string, 0, tableCount)
+		}
+		sqls[nodeName] = append(sqls[nodeName], buf.String())
 	}
+
 	plan.RewrittenSqls = sqls
 	return nil
 }

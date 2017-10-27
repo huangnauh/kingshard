@@ -23,7 +23,6 @@ import (
 	"kingshard/core/golog"
 	"kingshard/core/hack"
 	"kingshard/mysql"
-	"kingshard/proxy/router"
 	"kingshard/sqlparser"
 )
 
@@ -118,6 +117,7 @@ func (c *ClientConn) preHandleShard(sql string) (bool, error) {
 		r, err = mysql.ApplyFilters(executeDB.filters, r)
 		if err != nil {
 			golog.Error("ClientConn", "ApplyFilters", err.Error(), 0, "sql", sql)
+			return false, err
 		}
 		err = c.writeResultset(c.status, r)
 	} else {
@@ -217,7 +217,7 @@ func (c *ClientConn) setExecuteNode(tokens []string, tokensLen int, executeDB *E
 	}
 
 	if executeDB.ExecNode == nil {
-		node, err := c.GetNode(true)
+		node, err := c.GetNode()
 		if err != nil {
 			return err
 		}
@@ -252,7 +252,7 @@ func (c *ClientConn) getSelectExecDB(sql string, tokens []string, tokensLen int)
 					ruleDB = c.db
 				}
 
-				if schema.HasRules() && schema.rule.GetRule(ruleDB, tableName) != schema.rule.DefaultRule {
+				if rule := schema.rule.GetRule(ruleDB, tableName); rule != nil {
 					return nil, nil
 				} else {
 					//if the table is not shard table,send the sql
@@ -300,7 +300,8 @@ func (c *ClientConn) getDeleteExecDB(sql string, tokens []string, tokensLen int)
 				} else {
 					ruleDB = c.db
 				}
-				if schema.HasRules() && schema.rule.GetRule(ruleDB, tableName) != schema.rule.DefaultRule {
+
+				if schema.rule.GetRule(ruleDB, tableName) != nil {
 					return nil, nil
 				} else {
 					break
@@ -337,7 +338,7 @@ func (c *ClientConn) getInsertOrReplaceExecDB(sql string, tokens []string, token
 				} else {
 					ruleDB = c.db
 				}
-				if schema.HasRules() && schema.rule.GetRule(ruleDB, tableName) != schema.rule.DefaultRule {
+				if schema.rule.GetRule(ruleDB, tableName) != nil {
 					return nil, nil
 				} else {
 					break
@@ -373,7 +374,7 @@ func (c *ClientConn) getUpdateExecDB(sql string, tokens []string, tokensLen int)
 			} else {
 				ruleDB = c.db
 			}
-			if schema.HasRules() && schema.rule.GetRule(ruleDB, tableName) != schema.rule.DefaultRule {
+			if schema.rule.GetRule(ruleDB, tableName) != nil {
 				return nil, nil
 			} else {
 				break
@@ -513,20 +514,17 @@ func (c *ClientConn) handleShowColumns(sql string, tokens []string,
 					ruleDB = c.db
 				}
 
-				if c.schema.IsUsed() {
-					showRouter := c.schema.rule
-					showRule := showRouter.GetRule(ruleDB, tableName)
-					//this SHOW is sharding SQL
-					if showRule.Type != router.DefaultRuleType {
-						if 0 < len(showRule.SubTableIndexs) {
-							tableIndex := showRule.SubTableIndexs[0]
-							nodeIndex := showRule.TableToNode[tableIndex]
-							nodeName := showRule.Nodes[nodeIndex]
-							tokens[i+2] = fmt.Sprintf("%s_%04d", tableName, tableIndex)
-							executeDB.sql = strings.Join(tokens, " ")
-							executeDB.ExecNode = c.schema.nodes[nodeName]
-							return nil
-						}
+				showRule := c.schema.rule.GetRule(ruleDB, tableName)
+				//this SHOW is sharding SQL
+				if showRule != nil {
+					if 0 < len(showRule.SubTableIndexs) {
+						tableIndex := showRule.SubTableIndexs[0]
+						nodeIndex := showRule.TableToNode[tableIndex]
+						nodeName := showRule.Nodes[nodeIndex]
+						tokens[i+2] = fmt.Sprintf("%s_%04d", tableName, tableIndex)
+						executeDB.sql = strings.Join(tokens, " ")
+						executeDB.ExecNode = c.proxy.nodes[nodeName]
+						return nil
 					}
 				}
 			}
@@ -554,7 +552,7 @@ func (c *ClientConn) getTruncateExecDB(sql string, tokens []string, tokensLen in
 		} else {
 			ruleDB = c.db
 		}
-		if schema.HasRules() && schema.rule.GetRule(ruleDB, tableName) != schema.rule.DefaultRule {
+		if schema.rule.GetRule(ruleDB, tableName) != nil {
 			return nil, nil
 		}
 	}

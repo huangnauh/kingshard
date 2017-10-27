@@ -42,8 +42,7 @@ type Config struct {
 	Charset     string       `yaml:"proxy_charset"`
 	Nodes       []NodeConfig `yaml:"nodes"`
 
-	Schema    SchemaConfig     `yaml:"schema"`
-	Databases []DatabaseConfig `yaml:"databases"`
+	Schema SchemaConfig `yaml:"schema"`
 }
 
 //node节点对应的配置
@@ -61,9 +60,10 @@ type NodeConfig struct {
 
 //schema对应的结构体
 type SchemaConfig struct {
-	Nodes     []string      `yaml:"nodes"`
-	Default   string        `yaml:"default"` //default node
-	ShardRule []ShardConfig `yaml:"shard"`   //route rule
+	//Nodes     []string      `yaml:"nodes"`
+	//Default   string        `yaml:"default"` //default node
+	Databases []DatabaseConfig `yaml:"databases"`
+	ShardRule []ShardConfig    `yaml:"shard"` //route rule
 }
 
 //range,hash or date
