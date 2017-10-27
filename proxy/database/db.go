@@ -3,7 +3,6 @@ package database
 import (
 	"math/rand"
 	"sync"
-	"time"
 
 	"kingshard/config"
 	"kingshard/core/errors"
@@ -21,8 +20,6 @@ func (db *Database) GenerateIndex() {
 	if n <= 0 {
 		return
 	}
-
-	rand.Seed(time.Now().UnixNano())
 	db.LastNodeIndex = rand.Intn(n)
 }
 
@@ -40,6 +37,9 @@ func (db *Database) GetNextNode() (string, error) {
 	if l == 1 {
 		return db.Cfg.Nodes[0], nil
 	}
+
+	db.Lock()
+	defer db.Unlock()
 
 	if l <= db.LastNodeIndex {
 		db.GenerateIndex()
