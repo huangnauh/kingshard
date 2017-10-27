@@ -41,20 +41,6 @@ type Schema struct {
 	rule *router.Router
 }
 
-//func (s *Schema) NeedTry(err error) bool {
-//	return s.HasRules() && err == errors.ErrNoDBNode
-//}
-//
-//func (s *Schema) HasRules() bool {
-//	if s.rule == nil {
-//		return false
-//	}
-//	if len(s.rule.Rules) == 0 {
-//		return false
-//	}
-//	return true
-//}
-
 type BlacklistSqls struct {
 	sqls    map[string]string
 	sqlsLen int

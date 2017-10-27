@@ -16,13 +16,14 @@ package web
 import (
 	"time"
 
-	"kingshard/config"
-	"kingshard/core/golog"
-	"kingshard/proxy/server"
 	"github.com/labstack/echo"
 	"github.com/labstack/echo/engine/standard"
 	mw "github.com/labstack/echo/middleware"
 	"github.com/tylerb/graceful"
+
+	"kingshard/config"
+	"kingshard/core/golog"
+	"kingshard/proxy/server"
 )
 
 type ApiServer struct {

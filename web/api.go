@@ -22,9 +22,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/labstack/echo"
+
 	ksError "kingshard/core/errors"
 	"kingshard/core/golog"
-	"github.com/labstack/echo"
 )
 
 func (s *ApiServer) GetAllowIps(c echo.Context) error {

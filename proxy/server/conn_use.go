@@ -18,8 +18,8 @@ import (
 	"fmt"
 
 	"kingshard/backend"
-	"kingshard/mysql"
 	"kingshard/core/errors"
+	"kingshard/mysql"
 )
 
 func (c *ClientConn) handleUseDB(dbName string) error {

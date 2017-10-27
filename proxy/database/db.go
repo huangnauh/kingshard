@@ -5,9 +5,8 @@ import (
 	"sync"
 	"time"
 
-
-	"kingshard/core/errors"
 	"kingshard/config"
+	"kingshard/core/errors"
 )
 
 type Database struct {
@@ -27,12 +26,10 @@ func (db *Database) GenerateIndex() {
 	db.LastNodeIndex = rand.Intn(n)
 }
 
-
 func (db *Database) ParseDatabase(cfg *config.DatabaseConfig) {
 	db.Cfg = cfg
 	db.GenerateIndex()
 }
-
 
 func (db *Database) GetNextNode() (string, error) {
 	l := len(db.Cfg.Nodes)

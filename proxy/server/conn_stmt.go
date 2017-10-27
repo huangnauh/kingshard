@@ -257,7 +257,6 @@ func (c *ClientConn) handleStmtExecute(data []byte) error {
 	return err
 }
 
-
 func (c *ClientConn) handleSelectInNode(stmt *sqlparser.Select, sql string,
 	args []interface{}) error {
 	node, err := c.GetNode()

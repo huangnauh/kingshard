@@ -15,15 +15,14 @@
 package router
 
 import (
+	"fmt"
 	"sort"
 	"strconv"
-
 	"strings"
 
 	"kingshard/core/errors"
 	"kingshard/core/golog"
 	"kingshard/sqlparser"
-	"fmt"
 )
 
 const (
