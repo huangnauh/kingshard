@@ -24,6 +24,7 @@ import (
 
 	"github.com/labstack/echo"
 
+	"kingshard/config"
 	ksError "kingshard/core/errors"
 	"kingshard/core/golog"
 )
@@ -98,7 +99,8 @@ func (s *ApiServer) GetNodesStatus(c echo.Context) error {
 		dbStatus = append(dbStatus, masterStatus)
 
 		//get slaves status
-		for _, slave := range node.Slave {
+		slaves := node.GetSlaves()
+		for _, slave := range slaves {
 			slaveStatus.Node = nodeName
 			slaveStatus.Address = slave.Addr()
 			slaveStatus.Type = "slave"
@@ -224,21 +226,56 @@ func (s *ApiServer) ChangeProxyStatus(c echo.Context) error {
 	return c.JSON(http.StatusOK, "ok")
 }
 
+func (s *ApiServer) AddDatabase(c echo.Context) error {
+	dbConfig := config.DatabaseConfig{}
+	err := c.Bind(&dbConfig)
+	if err != nil {
+		return err
+	}
+	err = s.proxy.AddDatabase(&dbConfig)
+	if err != nil {
+		return err
+	}
+	return c.JSON(http.StatusOK, "ok")
+}
+
+func (s *ApiServer) DeleteDatabase(c echo.Context) error {
+	dbConfig := config.DatabaseConfig{}
+	err := c.Bind(&dbConfig)
+	if err != nil {
+		return err
+	}
+	s.proxy.DeleteDatabase(&dbConfig)
+	return c.JSON(http.StatusOK, "ok")
+}
+
 //range,hash or date
 type ShardConfig struct {
 	DB            string   `json:"db"`
-	Table         string   `yaml:"table"`
-	Key           string   `yaml:"key"`
-	Nodes         []string `yaml:"nodes"`
-	Locations     []int    `yaml:"locations"`
-	Type          string   `yaml:"type"`
-	TableRowLimit int      `yaml:"table_row_limit"`
-	DateRange     []string `yaml:"date_range"`
+	Table         string   `json:"table"`
+	Key           string   `json:"key"`
+	Nodes         []string `json:"nodes"`
+	Locations     []int    `json:"locations"`
+	Type          string   `json:"type"`
+	TableRowLimit int      `json:"table_row_limit"`
+	DateRange     []string `json:"date_range"`
+}
+
+type DatabaseConfig struct {
+	DB    string   `json:"db"`
+	Nodes []string `json:"nodes"`
+}
+
+type SchemaConfig struct {
+	Databases []DatabaseConfig `json:"databases"`
+	ShardRule []ShardConfig    `json:"shard"`
 }
 
 func (s *ApiServer) GetProxySchema(c echo.Context) error {
 	schema := s.cfg.Schema
 	shardConfig := make([]ShardConfig, 0, 10)
+	dbConfig := make([]DatabaseConfig, 0)
+
 	for _, r := range schema.ShardRule {
 		shardConfig = append(shardConfig,
 			ShardConfig{
@@ -252,7 +289,19 @@ func (s *ApiServer) GetProxySchema(c echo.Context) error {
 				DateRange:     r.DateRange,
 			})
 	}
-	return c.JSON(http.StatusOK, shardConfig)
+
+	dbs := s.proxy.GetDatabases()
+	for _, db := range dbs {
+		dbConfig = append(dbConfig, DatabaseConfig{
+			DB:    db.Cfg.DB,
+			Nodes: db.Cfg.Nodes,
+		})
+	}
+
+	return c.JSON(http.StatusOK, SchemaConfig{
+		ShardRule: shardConfig,
+		Databases: dbConfig,
+	})
 }
 
 func (s *ApiServer) GetAllBlackSQL(c echo.Context) error {

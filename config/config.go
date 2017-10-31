@@ -62,8 +62,8 @@ type NodeConfig struct {
 type SchemaConfig struct {
 	//Nodes     []string      `yaml:"nodes"`
 	//Default   string        `yaml:"default"` //default node
-	Databases []DatabaseConfig `yaml:"databases"`
-	ShardRule []ShardConfig    `yaml:"shard"` //route rule
+	Databases []*DatabaseConfig `yaml:"databases"`
+	ShardRule []ShardConfig     `yaml:"shard"` //route rule
 }
 
 //range,hash or date
@@ -79,10 +79,10 @@ type ShardConfig struct {
 }
 
 type DatabaseConfig struct {
-	DB       string   `yaml:"db"`
-	User     string   `yaml:"user"`
-	Password string   `yaml:"password"`
-	Nodes    []string `yaml:"nodes"`
+	DB       string   `yaml:"db"         json:"db"`
+	User     string   `yaml:"user"       json:"user"`
+	Password string   `yaml:"password"   json:"password"`
+	Nodes    []string `yaml:"nodes"      json:"nodes"`
 }
 
 func ParseConfigData(data []byte) (*Config, error) {

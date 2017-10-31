@@ -1,5 +1,39 @@
 # 管理端命令 [Web API版本](./kingshard_admin_api.md)
 
+## Database 操作
+
+
+```
+显示 database
+mysql> admin server(opt,k,v) values("show",'db','config');
++-------------+--------------+
+| DB          | Nodes_List   |
++-------------+--------------+
+| upyun_api   | node1, node2 |
+| transcoding | node2        |
+| upyun       | node3, node4 |
++-------------+--------------+
+```
+
+```
+添加 database
+mysql> admin database(opt,db,k,v) values("add",'banma','user', 'abc');
+mysql> admin database(opt,db,k,v) values("add",'banma','password', 'abc');
+mysql> admin database(opt,db,k,v) values("add",'banma','node', 'node1');
+mysql> admin database(opt,db,k,v) values("add",'banma','node', 'node2');
+```
+
+```
+删除 database 指定 node
+mysql> admin database(opt,db,k,v) values("del",'banma','node', 'node2');
+```
+
+```
+删除 database
+mysql> admin database(opt,db,k,v) values("del",'banma','node', 'all');
+```
+
+
 kingshard的管理端口复用了工作端口，通过特定的关键字来标示，目前支持对后端DB常用的管理操作。
 
 ## 平滑上（下）线后端DB

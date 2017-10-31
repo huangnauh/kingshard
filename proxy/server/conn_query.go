@@ -75,15 +75,15 @@ func (c *ClientConn) handleQuery(sql string) (err error) {
 
 	switch v := stmt.(type) {
 	case *sqlparser.Select:
-		return c.handleSelect(v, sql, nil)
+		return c.handleSelect(v, nil)
 	case *sqlparser.Insert:
-		return c.handleExec(stmt, sql, nil)
+		return c.handleExec(stmt, nil)
 	case *sqlparser.Update:
-		return c.handleExec(stmt, sql, nil)
+		return c.handleExec(stmt, nil)
 	case *sqlparser.Delete:
-		return c.handleExec(stmt, sql, nil)
+		return c.handleExec(stmt, nil)
 	case *sqlparser.Replace:
-		return c.handleExec(stmt, sql, nil)
+		return c.handleExec(stmt, nil)
 	case *sqlparser.Set:
 		return c.handleSet(v, sql)
 	case *sqlparser.Begin:
@@ -101,7 +101,7 @@ func (c *ClientConn) handleQuery(sql string) (err error) {
 	case *sqlparser.SimpleSelect:
 		return c.handleSimpleSelect(v)
 	case *sqlparser.Truncate:
-		return c.handleExec(stmt, sql, nil)
+		return c.handleExec(stmt, nil)
 	default:
 		return fmt.Errorf("statement %T not support now", stmt)
 	}
@@ -380,7 +380,7 @@ func (c *ClientConn) newEmptyResultset(stmt *sqlparser.Select) *mysql.Resultset 
 	return r
 }
 
-func (c *ClientConn) handleExec(stmt sqlparser.Statement, sql string, args []interface{}) error {
+func (c *ClientConn) handleExec(stmt sqlparser.Statement, args []interface{}) error {
 	plan, err := c.schema.rule.BuildPlan(c.db, stmt)
 	if err != nil {
 		return err

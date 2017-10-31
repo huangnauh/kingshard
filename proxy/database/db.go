@@ -29,6 +29,9 @@ func (db *Database) ParseDatabase(cfg *config.DatabaseConfig) {
 }
 
 func (db *Database) GetNextNode() (string, error) {
+	db.Lock()
+	defer db.Unlock()
+
 	l := len(db.Cfg.Nodes)
 	if l == 0 {
 		return "", errors.ErrNoDBNode
@@ -37,9 +40,6 @@ func (db *Database) GetNextNode() (string, error) {
 	if l == 1 {
 		return db.Cfg.Nodes[0], nil
 	}
-
-	db.Lock()
-	defer db.Unlock()
 
 	if l <= db.LastNodeIndex {
 		db.GenerateIndex()

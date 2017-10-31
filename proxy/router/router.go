@@ -17,6 +17,7 @@ package router
 import (
 	"fmt"
 	"strings"
+	"sync"
 
 	"kingshard/config"
 	"kingshard/core/errors"
@@ -53,6 +54,7 @@ type Router struct {
 	//map[db]map[table_name]*Rule
 	Rules     map[string]map[string]*Rule
 	Databases map[string]*database.Database
+	DBLock    sync.RWMutex
 	//DefaultRule *Rule
 	//Nodes []string //just for human saw
 }
@@ -112,7 +114,7 @@ func (r *Router) GetRule(db, table string) *Rule {
 	arry := strings.Split(table, ".")
 	if len(arry) == 2 {
 		table = strings.Trim(arry[1], "`")
-		db = strings.Trim(arry[0], "`")
+		//db = strings.Trim(arry[0], "`")
 	}
 	return ruleTable[table]
 }
@@ -227,33 +229,52 @@ func includeNode(nodes []string, node string) bool {
 	return false
 }
 
-func (r *Router) GetNodeByDatabase(db string) (string, error) {
-	d, ok := r.Databases[db]
-	if !ok {
-		golog.Error("server", "GetNodeByDatabase", errors.ErrNoDBExist.Error(), 0)
-		return "", errors.ErrNoDBExist
+func (r *Router) GetDatabases() []*database.Database {
+	r.DBLock.RLock()
+	dbs := make([]*database.Database, 0, len(r.Databases))
+	for _, db := range r.Databases {
+		dbs = append(dbs, db)
 	}
+	r.DBLock.RUnlock()
+	return dbs
+}
+
+func (r *Router) GetDatabase(db string) (*database.Database, error) {
+	r.DBLock.RLock()
+	d := r.Databases[db]
+	r.DBLock.RUnlock()
 	if d == nil {
 		golog.Error("server", "GetNodeByDatabase", errors.ErrNoDBExist.Error(), 0)
-		return "", errors.ErrNoDBExist
+		return nil, errors.ErrNoDBExist
 	}
+	return d, nil
+}
 
+func (r *Router) SetDatabase(db string, d *database.Database) {
+	r.DBLock.Lock()
+	r.Databases[db] = d
+	r.DBLock.Unlock()
+}
+
+func (r *Router) DeleteDatabase(db string) {
+	r.DBLock.Lock()
+	delete(r.Databases, db)
+	r.DBLock.Unlock()
+}
+
+func (r *Router) GetNodeByDatabase(db string) (string, error) {
+	d, err := r.GetDatabase(db)
+	if err != nil {
+		return "", err
+	}
 	return d.GetNextNode()
 }
 
 func (r *Router) GetUserByDatabase(db string) (string, string, error) {
-	d, ok := r.Databases[db]
-	if !ok {
-		golog.Error("server", "GetUserByDatabase",
-			fmt.Sprintf("database %s not exist", db), 0)
-		return "", "", errors.ErrNoDBExist
+	d, err := r.GetDatabase(db)
+	if err != nil {
+		return "", "", err
 	}
-	if d == nil {
-		golog.Error("server", "GetUserByDatabase",
-			fmt.Sprintf("database %s not exist", db), 0)
-		return "", "", errors.ErrNoDBExist
-	}
-
 	return d.Cfg.User, d.Cfg.Password, nil
 }
 

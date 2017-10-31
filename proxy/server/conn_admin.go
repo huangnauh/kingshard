@@ -23,6 +23,7 @@ import (
 	"strings"
 	"time"
 
+	"kingshard/config"
 	"kingshard/core/errors"
 	"kingshard/core/golog"
 	"kingshard/core/hack"
@@ -34,8 +35,9 @@ const (
 	Master = "master"
 	Slave  = "slave"
 
-	ServerRegion = "server"
-	NodeRegion   = "node"
+	ServerRegion   = "server"
+	NodeRegion     = "node"
+	DatabaseRegion = "database"
 
 	//op
 	ADMIN_OPT_ADD     = "add"
@@ -49,6 +51,7 @@ const (
 	ADMIN_PROXY         = "proxy"
 	ADMIN_NODE          = "node"
 	ADMIN_SCHEMA        = "schema"
+	ADMIN_DB            = "db"
 	ADMIN_LOG_SQL       = "log_sql"
 	ADMIN_SLOW_LOG_TIME = "slow_log_time"
 	ADMIN_ALLOW_IP      = "allow_ip"
@@ -56,10 +59,100 @@ const (
 
 	ADMIN_CONFIG = "config"
 	ADMIN_STATUS = "status"
+	ADMIN_ALL    = "all"
+
+	ADMIN_USER     = "user"
+	ADMIN_PASSWORD = "password"
 )
 
 var cmdServerOrder = []string{"opt", "k", "v"}
 var cmdNodeOrder = []string{"opt", "node", "k", "v"}
+var cmdDatabaseOrder = []string{"opt", "db", "k", "v"}
+
+func (c *ClientConn) handleDatabaseCmd(rows sqlparser.InsertRows) error {
+	var err error
+	var opt, db, k, v string
+	vals := rows.(sqlparser.Values)
+	if len(vals) == 0 {
+		return errors.ErrCmdUnsupport
+	}
+
+	tuple := vals[0].(sqlparser.ValTuple)
+	if len(tuple) != len(cmdDatabaseOrder) {
+		return errors.ErrCmdUnsupport
+	}
+
+	opt = sqlparser.String(tuple[0])
+	opt = strings.Trim(opt, "'")
+
+	db = sqlparser.String(tuple[1])
+	db = strings.Trim(db, "'")
+
+	k = sqlparser.String(tuple[2])
+	k = strings.Trim(k, "'")
+
+	v = sqlparser.String(tuple[3])
+	v = strings.Trim(v, "'")
+
+	switch strings.ToLower(opt) {
+	case ADMIN_OPT_CHANGE:
+	case ADMIN_OPT_ADD:
+		err = c.handleDatabaseChange(db, k, v)
+	case ADMIN_OPT_DEL:
+		err = c.handleDatabaseDelete(db, k, v)
+	default:
+		err = errors.ErrCmdUnsupport
+		golog.Error("ClientConn", "handleNodeCmd", err.Error(),
+			c.connectionId, "opt", opt)
+	}
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (c *ClientConn) handleDatabaseDelete(db, k, v string) error {
+	if len(k) == 0 || len(v) == 0 {
+		return errors.ErrCmdUnsupport
+	}
+
+	dbConfig := config.DatabaseConfig{DB: db}
+	switch strings.ToLower(k) {
+	case ADMIN_NODE:
+		if v != ADMIN_ALL {
+			dbConfig.Nodes = []string{v}
+		}
+	default:
+		err := errors.ErrCmdUnsupport
+		golog.Error("ClientConn", "handleDatabaseChange", err.Error(),
+			c.connectionId, "key", k, "value", v)
+		return err
+	}
+	c.proxy.DeleteDatabase(&dbConfig)
+	return nil
+}
+
+func (c *ClientConn) handleDatabaseChange(db, k, v string) error {
+	if len(k) == 0 || len(v) == 0 {
+		return errors.ErrCmdUnsupport
+	}
+
+	dbConfig := config.DatabaseConfig{DB: db}
+	switch strings.ToLower(k) {
+	case ADMIN_NODE:
+		dbConfig.Nodes = []string{v}
+	case ADMIN_USER:
+		dbConfig.User = v
+	case ADMIN_PASSWORD:
+		dbConfig.Password = v
+	default:
+		err := errors.ErrCmdUnsupport
+		golog.Error("ClientConn", "handleDatabaseChange", err.Error(),
+			c.connectionId, "key", k, "value", v)
+		return err
+	}
+	return c.proxy.AddDatabase(&dbConfig)
+}
 
 func (c *ClientConn) handleNodeCmd(rows sqlparser.InsertRows) error {
 	var err error
@@ -217,6 +310,8 @@ func (c *ClientConn) checkCmdOrder(region string, columns sqlparser.Columns) err
 		cmdOrder = cmdNodeOrder
 	case ServerRegion:
 		cmdOrder = cmdServerOrder
+	case DatabaseRegion:
+		cmdOrder = cmdDatabaseOrder
 	default:
 		return errors.ErrCmdUnsupport
 	}
@@ -305,6 +400,8 @@ func (c *ClientConn) handleAdmin(admin *sqlparser.Admin) error {
 		err = c.handleNodeCmd(admin.Rows)
 	case ServerRegion:
 		result, err = c.handleServerCmd(admin.Rows)
+	case DatabaseRegion:
+		err = c.handleDatabaseCmd(admin.Rows)
 	default:
 		return fmt.Errorf("admin %s not supported now", region)
 	}
@@ -340,6 +437,10 @@ func (c *ClientConn) handleAdminShow(k, v string) (*mysql.Resultset, error) {
 
 	if k == ADMIN_SCHEMA && v == ADMIN_CONFIG {
 		return c.handleShowSchemaConfig()
+	}
+
+	if k == ADMIN_DB && v == ADMIN_CONFIG {
+		return c.handleShowDatabaseConfig()
 	}
 
 	if k == ADMIN_ALLOW_IP && v == ADMIN_CONFIG {
@@ -468,7 +569,8 @@ func (c *ClientConn) handleShowNodeConfig() (*mysql.Resultset, error) {
 				strconv.Itoa(node.Master.IdleConnCount()),
 			})
 		//"slave"
-		for _, slave := range node.Slave {
+		slaves := node.GetSlaves()
+		for _, slave := range slaves {
 			if slave != nil {
 				rows = append(
 					rows,
@@ -493,6 +595,35 @@ func (c *ClientConn) handleShowNodeConfig() (*mysql.Resultset, error) {
 		}
 	}
 
+	return c.buildResultset(nil, names, values)
+}
+
+func (c *ClientConn) handleShowDatabaseConfig() (*mysql.Resultset, error) {
+	var Column = 2
+	var rows [][]string
+	var names []string = []string{
+		"DB",
+		"Nodes_List",
+	}
+
+	dbs := c.proxy.GetDatabases()
+	for _, db := range dbs {
+		rows = append(
+			rows,
+			[]string{
+				db.Cfg.DB,
+				strings.Join(db.Cfg.Nodes, ", "),
+			},
+		)
+	}
+
+	var values [][]interface{} = make([][]interface{}, len(rows))
+	for i := range rows {
+		values[i] = make([]interface{}, Column)
+		for j := range rows[i] {
+			values[i][j] = rows[i][j]
+		}
+	}
 	return c.buildResultset(nil, names, values)
 }
 

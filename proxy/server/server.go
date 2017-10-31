@@ -251,22 +251,151 @@ func (s *Server) parseDatabase() error {
 	dbCfg := s.cfg.Schema.Databases
 	for index := range dbCfg {
 		c := dbCfg[index]
-		nodes := make(map[string]bool)
-		for _, n := range c.Nodes {
-			if s.GetNode(n) == nil {
-				return fmt.Errorf("database %s node [%s] config is not exists", c.DB, n)
-			}
-
-			if ok := nodes[n]; ok {
-				return fmt.Errorf("database %s node [%s] duplicate", c.DB, n)
-			}
-
-			nodes[n] = true
+		if _, ok := s.schema.rule.Databases[c.DB]; ok {
+			return fmt.Errorf("database %s duplicate", c.DB)
+		}
+		err := s.CheckDatabaseConfig(c)
+		if err != nil {
+			return err
 		}
 		db := new(database.Database)
-		db.ParseDatabase(&c)
+		db.ParseDatabase(c)
 		s.schema.rule.Databases[c.DB] = db
 	}
+	return nil
+}
+
+func (s *Server) CheckDatabaseConfig(dbConfig *config.DatabaseConfig) error {
+	nodes := make(map[string]bool)
+	for _, n := range dbConfig.Nodes {
+		if s.GetNode(n) == nil {
+			return fmt.Errorf("database %s node [%s] config is not exists", dbConfig.DB, n)
+		}
+
+		if ok := nodes[n]; ok {
+			return fmt.Errorf("database %s node [%s] duplicate", dbConfig.DB, n)
+		}
+
+		nodes[n] = true
+	}
+	return nil
+}
+
+func (s *Server) changeDatabase(db *database.Database, dbConfig *config.DatabaseConfig) error {
+	db.Lock()
+	defer db.Unlock()
+
+	nodes := make(map[string]bool)
+	nodesConfig := make([]string, 0)
+	for _, n := range db.Cfg.Nodes {
+		nodes[n] = true
+		nodesConfig = append(nodesConfig, n)
+	}
+
+	for _, n := range dbConfig.Nodes {
+		if s.GetNode(n) == nil {
+			return fmt.Errorf("database %s node [%s] config is not exists", dbConfig.DB, n)
+		}
+
+		if ok := nodes[n]; ok {
+			return fmt.Errorf("database %s node [%s] duplicate", dbConfig.DB, n)
+		}
+
+		nodes[n] = true
+		nodesConfig = append(nodesConfig, n)
+	}
+
+	if dbConfig.User != "" {
+		db.Cfg.User = dbConfig.User
+	}
+
+	if dbConfig.Password != "" {
+		db.Cfg.Password = dbConfig.Password
+	}
+
+	if len(dbConfig.Nodes) > 0 {
+		db.Cfg.Nodes = nodesConfig
+	}
+
+	return nil
+}
+
+func (s *Server) deleteDatabase(db *database.Database, dbConfig *config.DatabaseConfig) error {
+	db.Lock()
+	defer db.Unlock()
+
+	nodes := make(map[string]bool)
+	for _, n := range db.Cfg.Nodes {
+		nodes[n] = true
+	}
+
+	for _, n := range dbConfig.Nodes {
+		if ok := nodes[n]; ok {
+			delete(nodes, n)
+		}
+	}
+	nodesConfig := make([]string, 0, len(nodes))
+	for n := range nodes {
+		nodesConfig = append(nodesConfig, n)
+	}
+
+	db.Cfg.Nodes = nodesConfig
+	return nil
+}
+
+func (s *Server) addDatabase(dbConfig *config.DatabaseConfig) error {
+	err := s.CheckDatabaseConfig(dbConfig)
+	if err != nil {
+		return err
+	}
+	db := new(database.Database)
+	db.ParseDatabase(dbConfig)
+	r := s.schema.rule
+	r.DBLock.Lock()
+	r.Databases[dbConfig.DB] = db
+	s.cfg.Schema.Databases = append(s.cfg.Schema.Databases, dbConfig)
+	r.DBLock.Unlock()
+	return nil
+}
+
+func (s *Server) GetDatabases() []*database.Database {
+	return s.schema.rule.GetDatabases()
+}
+
+func (s *Server) AddDatabase(dbConfig *config.DatabaseConfig) error {
+	db, _ := s.schema.rule.GetDatabase(dbConfig.DB)
+	if db != nil {
+		return s.changeDatabase(db, dbConfig)
+	} else {
+		return s.addDatabase(dbConfig)
+	}
+}
+
+func (s *Server) DeleteDatabase(dbConfig *config.DatabaseConfig) error {
+	err := s.CheckDatabaseConfig(dbConfig)
+	if err != nil {
+		return err
+	}
+
+	if len(dbConfig.Nodes) == 0 {
+		r := s.schema.rule
+		r.DBLock.Lock()
+		delete(r.Databases, dbConfig.DB)
+		for i, c := range s.cfg.Schema.Databases {
+			if c.DB == dbConfig.DB {
+				s.cfg.Schema.Databases = append(s.cfg.Schema.Databases[:i], s.cfg.Schema.Databases[i+1:]...)
+			}
+		}
+		r.DBLock.Unlock()
+		return nil
+	}
+
+	db, _ := s.schema.rule.GetDatabase(dbConfig.DB)
+	if db == nil {
+		return nil
+	}
+
+	s.deleteDatabase(db, dbConfig)
 	return nil
 }
 

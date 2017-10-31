@@ -164,6 +164,16 @@ func (n *Node) checkSlave() {
 
 }
 
+func (n *Node) GetSlaves() []*DB {
+	n.RLock()
+	slaves := make([]*DB, 0, len(n.Slave))
+	for _, slave := range n.Slave {
+		slaves = append(slaves, slave)
+	}
+	n.RUnlock()
+	return slaves
+}
+
 func (n *Node) AddSlave(addr string) error {
 	var db *DB
 	var weight int
