@@ -250,18 +250,6 @@ func (r *Router) GetDatabase(db string) (*database.Database, error) {
 	return d, nil
 }
 
-func (r *Router) SetDatabase(db string, d *database.Database) {
-	r.DBLock.Lock()
-	r.Databases[db] = d
-	r.DBLock.Unlock()
-}
-
-func (r *Router) DeleteDatabase(db string) {
-	r.DBLock.Lock()
-	delete(r.Databases, db)
-	r.DBLock.Unlock()
-}
-
 func (r *Router) GetNodeByDatabase(db string) (string, error) {
 	d, err := r.GetDatabase(db)
 	if err != nil {
