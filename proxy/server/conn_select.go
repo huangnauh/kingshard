@@ -54,7 +54,7 @@ func (c *ClientConn) handleFieldList(data []byte) error {
 		return mysql.NewDefaultError(mysql.ER_NO_DB_ERROR)
 	}
 
-	n, err := c.GetNodeByTable(table)
+	n, err := c.GetNode()
 	if err != nil {
 		return err
 	}

@@ -113,19 +113,6 @@ func (c *ClientConn) GetNode() (*backend.Node, error) {
 	return c.proxy.GetNodeByDatabase(c.db)
 }
 
-func (c *ClientConn) GetNodeByTable(table string) (*backend.Node, error) {
-	rule := c.schema.rule.GetRule(c.db, table)
-	if rule == nil {
-		return c.proxy.GetNodeByDatabase(c.db)
-	}
-	nodeName := rule.Nodes[0]
-	n := c.proxy.GetNode(nodeName)
-	if n == nil {
-		return nil, errors.ErrNoNodeExist
-	}
-	return n, nil
-}
-
 func (c *ClientConn) getBackendConn(n *backend.Node, fromSlave bool) (co *backend.BackendConn, err error) {
 	if !c.isInTransaction() {
 		if fromSlave {
