@@ -88,7 +88,7 @@ func Open(addr string, user string, password string, dbName string, maxConnNum i
 			conn, err := db.newConn()
 			if err != nil {
 				db.Close()
-				return nil, err
+				return db, err
 			}
 			conn.pushTimestamp = time.Now().Unix()
 			db.cacheConns <- conn
