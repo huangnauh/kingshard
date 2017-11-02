@@ -237,7 +237,7 @@ func (c *ClientConn) readHandshakeResponse() error {
 
 	if db == "" {
 		//TODO: support simple select
-		golog.Warn("ClientConn", "readHandshakeResponse", "db not find", 0)
+		golog.Warn("ClientConn", "readHandshakeResponse", "db not find", c.connectionId)
 		return nil
 	}
 
@@ -254,7 +254,7 @@ func (c *ClientConn) readHandshakeResponse() error {
 func (c *ClientConn) CheckPassword(user, password string) error {
 	checkAuth := mysql.CalcPassword(c.salt, []byte(password))
 	if c.user != user || !bytes.Equal(c.auth, checkAuth) {
-		golog.Error("ClientConn", "CheckPassword", "error", 0,
+		golog.Error("ClientConn", "CheckPassword", "error", c.connectionId,
 			"auth", c.auth,
 			"checkAuth", checkAuth,
 			"client_user", c.user,
@@ -274,7 +274,7 @@ func (c *ClientConn) Run() {
 			buf = buf[:runtime.Stack(buf, false)]
 
 			golog.Error("ClientConn", "Run",
-				err.Error(), 0,
+				err.Error(), c.connectionId,
 				"stack", string(buf))
 		}
 
@@ -339,7 +339,7 @@ func (c *ClientConn) dispatch(data []byte) error {
 		return c.writeEOF(0)
 	default:
 		msg := fmt.Sprintf("command %d not supported now", cmd)
-		golog.Error("ClientConn", "dispatch", msg, 0)
+		golog.Error("ClientConn", "dispatch", msg, c.connectionId)
 		return mysql.NewError(mysql.ER_UNKNOWN_ERROR, msg)
 	}
 

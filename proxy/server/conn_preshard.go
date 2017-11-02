@@ -105,7 +105,7 @@ func (c *ClientConn) preHandleShard(sql string) (bool, error) {
 
 	if len(rs) == 0 {
 		msg := fmt.Sprintf("result is empty")
-		golog.Error("ClientConn", "preHandleShard", msg, 0, "sql", sql)
+		golog.Error("ClientConn", "preHandleShard", msg, c.connectionId, "sql", sql)
 		return false, mysql.NewError(mysql.ER_UNKNOWN_ERROR, msg)
 	}
 
@@ -116,7 +116,7 @@ func (c *ClientConn) preHandleShard(sql string) (bool, error) {
 	if r != nil {
 		r, err = mysql.ApplyFilters(executeDB.filters, r)
 		if err != nil {
-			golog.Error("ClientConn", "ApplyFilters", err.Error(), 0, "sql", sql)
+			golog.Error("ClientConn", "ApplyFilters", err.Error(), c.connectionId, "sql", sql)
 			return false, err
 		}
 		err = c.writeResultset(c.status, r)
@@ -203,7 +203,7 @@ func (c *ClientConn) GetExecDB(tokens []string, sql string) (*ExecuteDB, error) 
 func (c *ClientConn) setExecuteNode(tokens []string, tokensLen int, executeDB *ExecuteDB) error {
 	if 2 <= tokensLen {
 		//for /*node1*/
-		golog.Debug("ClientConn", "setExecuteNode", fmt.Sprintf("%s", tokens), 0)
+		golog.Debug("ClientConn", "setExecuteNode", fmt.Sprintf("%s", tokens), c.connectionId)
 		if 1 < len(tokens) && tokens[0][0] == mysql.COMMENT_PREFIX {
 			nodeName := strings.Trim(tokens[0], mysql.COMMENT_STRING)
 			if c.proxy.nodes[nodeName] != nil {
@@ -224,7 +224,7 @@ func (c *ClientConn) setExecuteNode(tokens []string, tokensLen int, executeDB *E
 		executeDB.ExecNode = node
 	}
 
-	golog.Debug("ClientConn", "setExecuteNode", executeDB.ExecNode.Cfg.Name, 0)
+	golog.Debug("ClientConn", "setExecuteNode", executeDB.ExecNode.Cfg.Name, c.connectionId)
 
 	return nil
 }

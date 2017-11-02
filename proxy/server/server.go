@@ -525,7 +525,7 @@ func (s *Server) newClientConn(co net.Conn) *ClientConn {
 func (s *Server) onConn(c net.Conn) {
 	s.counter.IncrClientConns()
 	conn := s.newClientConn(c) //新建一个conn
-	golog.Debug("Server", "onConn", "new client conn", 0)
+	golog.Debug("Server", "onConn", "new client conn", conn.connectionId)
 
 	defer func() {
 		err := recover()
@@ -550,7 +550,7 @@ func (s *Server) onConn(c net.Conn) {
 		return
 	}
 	if err := conn.Handshake(); err != nil {
-		golog.Error("server", "onConn", err.Error(), 0)
+		golog.Error("server", "onConn", err.Error(), conn.connectionId)
 		conn.writeError(err)
 		conn.Close()
 		return
