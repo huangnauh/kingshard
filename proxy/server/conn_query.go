@@ -109,10 +109,6 @@ func (c *ClientConn) handleQuery(sql string) (err error) {
 	return nil
 }
 
-func (c *ClientConn) GetNode() (*backend.Node, error) {
-	return c.proxy.GetNodeByDatabase(c.db)
-}
-
 func (c *ClientConn) getBackendConn(n *backend.Node, fromSlave bool) (co *backend.BackendConn, err error) {
 	if !c.isInTransaction() {
 		if fromSlave {
@@ -155,7 +151,7 @@ func (c *ClientConn) getBackendConn(n *backend.Node, fromSlave bool) (co *backen
 	golog.Debug("ClientConn", "getBackendConn", msg, 0)
 	if err = co.UseDB(c.db); err != nil {
 		//reset the database to null
-		c.db = ""
+		c.ClearDatabase()
 		golog.Error("ClientConn", "getBackendConn", err.Error(), 0)
 		return
 	}

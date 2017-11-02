@@ -30,7 +30,6 @@ type ExecuteDB struct {
 	ExecNode *backend.Node
 	IsSlave  bool
 	sql      string
-	filters  []mysql.Filter
 }
 
 func (c *ClientConn) isBlacklistSql(sql string) bool {
@@ -114,11 +113,6 @@ func (c *ClientConn) preHandleShard(sql string) (bool, error) {
 
 	r := rs[0].Resultset
 	if r != nil {
-		r, err = mysql.ApplyFilters(executeDB.filters, r)
-		if err != nil {
-			golog.Error("ClientConn", "ApplyFilters", err.Error(), c.connectionId, "sql", sql)
-			return false, err
-		}
 		err = c.writeResultset(c.status, r)
 	} else {
 		err = c.writeOK(rs[0])

@@ -42,7 +42,7 @@ func (c *ClientConn) handleUseDB(dbName string) error {
 		if err := c.CheckPassword(user, password); err != nil {
 			return err
 		}
-		c.db = dbName
+		c.SetDatabase(dbName)
 	}
 
 	if c.db != dbName {
@@ -62,9 +62,9 @@ func (c *ClientConn) handleUseDB(dbName string) error {
 
 	if err = co.UseDB(dbName); err != nil {
 		//reset the client database to null
-		c.db = ""
+		c.ClearDatabase()
 		return err
 	}
-	c.db = dbName
+	c.SetDatabase(dbName)
 	return c.writeOK(nil)
 }

@@ -23,6 +23,7 @@ import (
 	"sync"
 
 	"kingshard/backend"
+	"kingshard/core/errors"
 	"kingshard/core/golog"
 	"kingshard/core/hack"
 	"kingshard/mysql"
@@ -49,6 +50,8 @@ type ClientConn struct {
 	user string
 	db   string
 	auth []byte
+
+	node string
 
 	salt []byte
 
@@ -241,7 +244,10 @@ func (c *ClientConn) readHandshakeResponse() error {
 		return nil
 	}
 
-	c.db = db
+	err = c.SetDatabase(db)
+	if err != nil {
+		return err
+	}
 
 	user, password, err := c.proxy.GetUserByDatabase(db)
 	if err != nil {
@@ -249,6 +255,35 @@ func (c *ClientConn) readHandshakeResponse() error {
 	}
 
 	return c.CheckPassword(user, password)
+}
+
+func (c *ClientConn) GetNode() (*backend.Node, error) {
+	n := c.proxy.GetNode(c.node)
+	if n == nil {
+		golog.Info("server", "GetNodeByDatabase", errors.ErrNoNodeExist.Error(), 0)
+		return nil, errors.ErrNoNodeExist
+	}
+	return n, nil
+}
+
+func (c *ClientConn) GetNodeByDatabase(db string) (string, error) {
+	return c.proxy.schema.rule.GetNodeByDatabase(db)
+}
+
+func (c *ClientConn) SetDatabase(db string) error {
+	node, err := c.GetNodeByDatabase(db)
+	if err != nil {
+		return err
+	}
+
+	c.db = db
+	c.node = node
+	return nil
+}
+
+func (c *ClientConn) ClearDatabase() {
+	c.db = ""
+	c.node = ""
 }
 
 func (c *ClientConn) CheckPassword(user, password string) error {

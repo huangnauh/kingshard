@@ -399,20 +399,6 @@ func (s *Server) DeleteDatabase(dbConfig *config.DatabaseConfig) error {
 	return nil
 }
 
-func (s *Server) GetNodeByDatabase(db string) (*backend.Node, error) {
-	node, err := s.schema.rule.GetNodeByDatabase(db)
-	if err != nil {
-		return nil, err
-	}
-
-	n := s.GetNode(node)
-	if n == nil {
-		golog.Info("server", "GetNodeByDatabase", errors.ErrNoNodeExist.Error(), 0)
-		return nil, errors.ErrNoNodeExist
-	}
-	return n, nil
-}
-
 func (s *Server) GetUserByDatabase(db string) (string, string, error) {
 	return s.schema.rule.GetUserByDatabase(db)
 }

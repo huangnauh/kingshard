@@ -67,7 +67,7 @@ func (c *ClientConn) handleFieldList(data []byte) error {
 
 	if err = co.UseDB(c.db); err != nil {
 		//reset the database to null
-		c.db = ""
+		c.ClearDatabase()
 		return err
 	}
 

@@ -92,4 +92,3 @@ schema :
       nodes: [node2]
 
     shard:
-    -
