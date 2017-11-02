@@ -26,8 +26,8 @@ import (
 )
 
 const (
-	Up = iota
-	Down
+	Down = iota
+	Up
 	ManualDown
 	Unknown
 
@@ -53,8 +53,7 @@ type DB struct {
 	lastPing    int64
 }
 
-func Open(addr string, user string, password string, dbName string, maxConnNum int) (*DB, error) {
-	var err error
+func New(addr string, user string, password string, dbName string, maxConnNum int) *DB {
 	db := new(DB)
 	db.addr = addr
 	db.user = user
@@ -72,11 +71,17 @@ func Open(addr string, user string, password string, dbName string, maxConnNum i
 		db.maxConnNum = DefaultMaxConnNum
 		db.InitConnNum = InitConnCount
 	}
+	return db
+}
+
+func Open(addr string, user string, password string, dbName string, maxConnNum int) (*DB, error) {
+	db := New(addr, user, password, dbName, maxConnNum)
+	var err error
 	//check connection
 	db.checkConn, err = db.newConn()
 	if err != nil {
 		db.Close()
-		return db, err
+		return nil, err
 	}
 
 	db.idleConns = make(chan *Conn, db.maxConnNum)
@@ -88,7 +93,7 @@ func Open(addr string, user string, password string, dbName string, maxConnNum i
 			conn, err := db.newConn()
 			if err != nil {
 				db.Close()
-				return db, err
+				return nil, err
 			}
 			conn.pushTimestamp = time.Now().Unix()
 			db.cacheConns <- conn

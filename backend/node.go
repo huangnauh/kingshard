@@ -139,26 +139,27 @@ func (n *Node) checkSlave() {
 	n.RUnlock()
 
 	for i := 0; i < len(slaves); i++ {
-		if err := slaves[i].Ping(); err != nil {
-			golog.Error("Node", "checkSlave", "Ping", 0, "db.Addr", slaves[i].Addr(), "error", err.Error())
+		slave := slaves[i]
+		if err := slave.Ping(); err != nil {
+			golog.Error("Node", "checkSlave", "Ping", 0, "db.Addr", slave.Addr(), "error", err.Error())
 		} else {
-			if atomic.LoadInt32(&(slaves[i].state)) == Down {
-				golog.Info("Node", "checkSlave", "Slave up", 0, "db.Addr", slaves[i].Addr())
-				n.UpSlave(slaves[i].addr)
+			if atomic.LoadInt32(&(slave.state)) == Down {
+				golog.Info("Node", "checkSlave", "Slave up", 0, "db.Addr", slave.Addr())
+				n.UpSlave(slave.addr)
 			}
-			slaves[i].SetLastPing()
-			if atomic.LoadInt32(&(slaves[i].state)) != ManualDown {
-				atomic.StoreInt32(&(slaves[i].state), Up)
+			slave.SetLastPing()
+			if atomic.LoadInt32(&(slave.state)) != ManualDown {
+				atomic.StoreInt32(&(slave.state), Up)
 			}
 			continue
 		}
 
-		if int64(n.DownAfterNoAlive) > 0 && time.Now().Unix()-slaves[i].GetLastPing() > int64(n.DownAfterNoAlive/time.Second) {
+		if int64(n.DownAfterNoAlive) > 0 && time.Now().Unix()-slave.GetLastPing() > int64(n.DownAfterNoAlive/time.Second) {
 			golog.Info("Node", "checkSlave", "Slave down", 0,
-				"db.Addr", slaves[i].Addr(),
+				"db.Addr", slave.Addr(),
 				"slave_down_time", int64(n.DownAfterNoAlive/time.Second))
 			//If can't ping slave after DownAfterNoAlive, set slave Down
-			n.DownSlave(slaves[i].addr, Down)
+			n.DownSlave(slave.addr, Down)
 		}
 	}
 
@@ -243,6 +244,11 @@ func (n *Node) DeleteSlave(addr string) error {
 	n.SlaveWeights = sw
 	n.InitBalancer()
 	return nil
+}
+
+func (n *Node) NewDB(addr string) *DB {
+	db := New(addr, n.Cfg.User, n.Cfg.Password, "", n.Cfg.MaxConnNum)
+	return db
 }
 
 func (n *Node) OpenDB(addr string) (*DB, error) {
@@ -335,18 +341,16 @@ func (n *Node) DownSlave(addr string, state int32) error {
 }
 
 func (n *Node) ParseMaster(masterStr string) error {
-	var err error
 	if len(masterStr) == 0 {
 		return errors.ErrNoMasterDB
 	}
 
-	n.Master, err = n.OpenDB(masterStr)
-	return err
+	n.Master = n.NewDB(masterStr)
+	return nil
 }
 
 //slaveStr(127.0.0.1:3306@2,192.168.0.12:3306@3)
 func (n *Node) ParseSlave(slaveStr string) error {
-	var db *DB
 	var weight int
 	var err error
 
@@ -371,10 +375,7 @@ func (n *Node) ParseSlave(slaveStr string) error {
 			weight = 1
 		}
 		n.SlaveWeights = append(n.SlaveWeights, weight)
-		if db, err = n.OpenDB(addrAndWeight[0]); err != nil {
-			golog.Error("Node", "ParseSlave", err.Error(), 0)
-			//return err
-		}
+		db := n.NewDB(addrAndWeight[0])
 		n.Slave = append(n.Slave, db)
 	}
 	n.InitBalancer()
