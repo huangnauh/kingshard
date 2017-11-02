@@ -455,47 +455,6 @@ func (c *ClientConn) handleShowColumns(sql string, tokens []string,
 	for i := 0; i < tokensLen; i++ {
 		tokens[i] = strings.ToLower(tokens[i])
 		//handle SQL:
-
-		//SHOW CREATE DATABASE db_name
-		if tokens[i] == mysql.TK_STR_DB && i+1 < tokensLen {
-			ruleDB = strings.Trim(tokens[i+1], "`")
-			if ruleDB != c.db {
-				return errors.ErrDBNotAllow
-			}
-		}
-
-		//SHOW OPEN TABLES [FROM db_name] [like_or_where]
-		if tokens[i] == mysql.TK_STR_OPEN && i+1 < tokensLen {
-			if i+3 < tokensLen && strings.ToLower(tokens[i+2]) == mysql.TK_STR_FROM {
-				ruleDB = strings.Trim(tokens[i+3], "`")
-				if ruleDB != c.db {
-					return errors.ErrDBNotAllow
-				}
-			} else {
-				executeDB.filters = []mysql.Filter{mysql.NewDatabaseFilter(c.db)}
-			}
-		}
-
-		//SHOW DATABASES [like_or_where]
-		if tokens[i] == mysql.TK_STR_DBS {
-			executeDB.filters = []mysql.Filter{mysql.NewDatabaseFilter(c.db)}
-		}
-
-		//SHOW TABLE STATUS [FROM db_name] [like_or_where]
-		//SHOW [FULL] TABLES [FROM db_name] [like_or_where]
-		//SHOW TRIGGERS [FROM db_name] [like_or_where]
-		if (tokens[i] == mysql.TK_STR_TABLES ||
-			tokens[i] == mysql.TK_STR_STATUS ||
-			tokens[i] == mysql.TK_STR_TRIGGERS) &&
-			i+2 < tokensLen {
-			if strings.ToLower(tokens[i+1]) == mysql.TK_STR_FROM {
-				ruleDB = strings.Trim(tokens[i+1], "`")
-				if ruleDB != c.db {
-					return errors.ErrDBNotAllow
-				}
-			}
-		}
-
 		//SHOW [FULL] COLUMNS FROM tbl_name [FROM db_name] [like_or_where]
 		//SHOW INDEX FROM tbl_name [FROM db_name]
 		if (tokens[i] == mysql.TK_STR_FIELDS ||
