@@ -479,7 +479,7 @@ func (plan *Plan) GetIRKeyIndex(cols sqlparser.Columns) error {
 		return errors.ErrNoPlanRule
 	}
 	plan.KeyIndex = -1
-	for i, _ := range cols {
+	for i := range cols {
 		colname := string(cols[i].(*sqlparser.NonStarExpr).Expr.(*sqlparser.ColName).Name)
 
 		if strings.ToLower(colname) == plan.Rule.Key {

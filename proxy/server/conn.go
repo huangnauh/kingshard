@@ -51,7 +51,7 @@ type ClientConn struct {
 	db   string
 	auth []byte
 
-	node string
+	node *backend.Node
 
 	salt []byte
 
@@ -258,20 +258,25 @@ func (c *ClientConn) readHandshakeResponse() error {
 }
 
 func (c *ClientConn) GetNode() (*backend.Node, error) {
-	n := c.proxy.GetNode(c.node)
-	if n == nil {
-		golog.Info("server", "GetNodeByDatabase", errors.ErrNoNodeExist.Error(), 0)
-		return nil, errors.ErrNoNodeExist
+	if c.node == nil {
+		golog.Error("ClientConn", "GetNode",
+			fmt.Sprintf("client has db %s, error: %s", c.db, errors.ErrNoClientNodeExist), c.connectionId)
+		return nil, errors.ErrNoClientNodeExist
 	}
-	return n, nil
+	return c.node, nil
 }
 
-func (c *ClientConn) GetNodeByDatabase(db string) (string, error) {
-	return c.proxy.schema.rule.GetNodeByDatabase(db)
+func (c *ClientConn) GetNodeByDatabase() *backend.Node {
+	return c.node
 }
 
 func (c *ClientConn) SetDatabase(db string) error {
-	node, err := c.GetNodeByDatabase(db)
+	database, err := c.proxy.schema.rule.GetDatabase(db)
+	if err != nil {
+		return err
+	}
+
+	node, err := database.GetNode()
 	if err != nil {
 		return err
 	}
@@ -283,7 +288,7 @@ func (c *ClientConn) SetDatabase(db string) error {
 
 func (c *ClientConn) ClearDatabase() {
 	c.db = ""
-	c.node = ""
+	c.node = nil
 }
 
 func (c *ClientConn) CheckPassword(user, password string) error {

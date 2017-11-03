@@ -100,7 +100,7 @@ func (c *ClientConn) writeFieldList(status uint16, fs []*mysql.Field) error {
 //处理select语句
 func (c *ClientConn) handleSelect(stmt *sqlparser.Select, args []interface{}) error {
 	var fromSlave bool = true
-	plan, err := c.schema.rule.BuildPlan(c.db, stmt)
+	plan, err := c.schema.rule.BuildPlan(c.db, c.node.Cfg.Name, stmt)
 	if err != nil {
 		return err
 	}

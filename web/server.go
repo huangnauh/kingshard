@@ -76,9 +76,6 @@ func (s *ApiServer) RegisterMiddleware() {
 func (s *ApiServer) RegisterURL() {
 	s.Get("/api/v1/nodes/status", s.GetNodesStatus)
 
-	s.Post("/api/v1/databases", s.AddDatabase)
-	s.Delete("/api/v1/databases", s.DeleteDatabase)
-
 	s.Post("/api/v1/nodes/slaves", s.AddOneSlave)
 	s.Delete("/api/v1/nodes/slaves", s.DeleteOneSlave)
 	s.Put("/api/v1/nodes/slaves/status", s.ChangeSlaveStatus)

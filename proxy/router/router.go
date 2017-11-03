@@ -17,7 +17,6 @@ package router
 import (
 	"fmt"
 	"strings"
-	"sync"
 
 	"kingshard/config"
 	"kingshard/core/errors"
@@ -54,8 +53,6 @@ type Router struct {
 	//map[db]map[table_name]*Rule
 	Rules     map[string]map[string]*Rule
 	Databases map[string]*database.Database
-	DBLock    sync.RWMutex
-	//DefaultRule *Rule
 	//Nodes []string //just for human saw
 }
 
@@ -229,33 +226,17 @@ func includeNode(nodes []string, node string) bool {
 	return false
 }
 
-func (r *Router) GetDatabases() []*database.Database {
-	r.DBLock.RLock()
-	dbs := make([]*database.Database, 0, len(r.Databases))
-	for _, db := range r.Databases {
-		dbs = append(dbs, db)
-	}
-	r.DBLock.RUnlock()
-	return dbs
+func (r *Router) GetDatabases() map[string]*database.Database {
+	return r.Databases
 }
 
 func (r *Router) GetDatabase(db string) (*database.Database, error) {
-	r.DBLock.RLock()
 	d := r.Databases[db]
-	r.DBLock.RUnlock()
 	if d == nil {
-		golog.Error("server", "GetNodeByDatabase", errors.ErrNoDBExist.Error(), 0)
+		golog.Error("server", "GetDatabase", errors.ErrNoDBExist.Error(), 0)
 		return nil, errors.ErrNoDBExist
 	}
 	return d, nil
-}
-
-func (r *Router) GetNodeByDatabase(db string) (string, error) {
-	d, err := r.GetDatabase(db)
-	if err != nil {
-		return "", err
-	}
-	return d.GetNextNode()
 }
 
 func (r *Router) GetUserByDatabase(db string) (string, string, error) {
@@ -263,30 +244,31 @@ func (r *Router) GetUserByDatabase(db string) (string, string, error) {
 	if err != nil {
 		return "", "", err
 	}
-	return d.Cfg.User, d.Cfg.Password, nil
+	user, password := d.GetUser()
+	return user, password, nil
 }
 
 //build a router plan
-func (r *Router) BuildPlan(db string, statement sqlparser.Statement) (*Plan, error) {
+func (r *Router) BuildPlan(db, node string, statement sqlparser.Statement) (*Plan, error) {
 	//因为实现Statement接口的方法都是指针类型，所以type对应类型也是指针类型
 	switch stmt := statement.(type) {
 	case *sqlparser.Insert:
-		return r.buildInsertPlan(db, stmt)
+		return r.buildInsertPlan(db, node, stmt)
 	case *sqlparser.Replace:
-		return r.buildReplacePlan(db, stmt)
+		return r.buildReplacePlan(db, node, stmt)
 	case *sqlparser.Select:
-		return r.buildSelectPlan(db, stmt)
+		return r.buildSelectPlan(db, node, stmt)
 	case *sqlparser.Update:
-		return r.buildUpdatePlan(db, stmt)
+		return r.buildUpdatePlan(db, node, stmt)
 	case *sqlparser.Delete:
-		return r.buildDeletePlan(db, stmt)
+		return r.buildDeletePlan(db, node, stmt)
 	case *sqlparser.Truncate:
-		return r.buildTruncatePlan(db, stmt)
+		return r.buildTruncatePlan(db, node, stmt)
 	}
 	return nil, errors.ErrNoPlan
 }
 
-func (r *Router) buildSelectPlan(db string, statement sqlparser.Statement) (*Plan, error) {
+func (r *Router) buildSelectPlan(db, node string, statement sqlparser.Statement) (*Plan, error) {
 	plan := &Plan{}
 	var where *sqlparser.Where
 	var err error
@@ -307,7 +289,7 @@ func (r *Router) buildSelectPlan(db string, statement sqlparser.Statement) (*Pla
 	}
 
 	plan.Rule = r.GetRule(db, tableName) //根据表名获得分表规则
-	ok, err := r.CheckRule(plan, stmt)
+	ok, err := r.CheckRule(node, plan, stmt)
 	if err != nil {
 		return nil, err
 	}
@@ -342,7 +324,7 @@ func (r *Router) buildSelectPlan(db string, statement sqlparser.Statement) (*Pla
 	return plan, nil
 }
 
-func (r *Router) buildInsertPlan(db string, statement sqlparser.Statement) (*Plan, error) {
+func (r *Router) buildInsertPlan(db, node string, statement sqlparser.Statement) (*Plan, error) {
 	plan := &Plan{}
 	plan.Rows = make(map[int]sqlparser.Values)
 	stmt := statement.(*sqlparser.Insert)
@@ -356,7 +338,7 @@ func (r *Router) buildInsertPlan(db string, statement sqlparser.Statement) (*Pla
 
 	//根据sql语句的表，获得对应的分片规则
 	plan.Rule = r.GetRule(db, sqlparser.String(stmt.Table))
-	ok, err := r.CheckRule(plan, stmt)
+	ok, err := r.CheckRule(node, plan, stmt)
 	if err != nil {
 		return nil, err
 	}
@@ -399,13 +381,13 @@ func (r *Router) buildInsertPlan(db string, statement sqlparser.Statement) (*Pla
 	return plan, nil
 }
 
-func (r *Router) buildUpdatePlan(db string, statement sqlparser.Statement) (*Plan, error) {
+func (r *Router) buildUpdatePlan(db, node string, statement sqlparser.Statement) (*Plan, error) {
 	plan := &Plan{}
 	var where *sqlparser.Where
 
 	stmt := statement.(*sqlparser.Update)
 	plan.Rule = r.GetRule(db, sqlparser.String(stmt.Table))
-	ok, err := r.CheckRule(plan, stmt)
+	ok, err := r.CheckRule(node, plan, stmt)
 	if err != nil {
 		return nil, err
 	}
@@ -444,14 +426,14 @@ func (r *Router) buildUpdatePlan(db string, statement sqlparser.Statement) (*Pla
 	return plan, nil
 }
 
-func (r *Router) buildDeletePlan(db string, statement sqlparser.Statement) (*Plan, error) {
+func (r *Router) buildDeletePlan(db, node string, statement sqlparser.Statement) (*Plan, error) {
 	plan := &Plan{}
 	var where *sqlparser.Where
 	var err error
 
 	stmt := statement.(*sqlparser.Delete)
 	plan.Rule = r.GetRule(db, sqlparser.String(stmt.Table))
-	ok, err := r.CheckRule(plan, stmt)
+	ok, err := r.CheckRule(node, plan, stmt)
 	if err != nil {
 		return nil, err
 	}
@@ -485,12 +467,19 @@ func (r *Router) buildDeletePlan(db string, statement sqlparser.Statement) (*Pla
 	return plan, nil
 }
 
-func (r *Router) buildTruncatePlan(db string, statement sqlparser.Statement) (*Plan, error) {
+func (r *Router) buildTruncatePlan(db, node string, statement sqlparser.Statement) (*Plan, error) {
 	plan := &Plan{}
 	var err error
 
 	stmt := statement.(*sqlparser.Truncate)
 	plan.Rule = r.GetRule(db, sqlparser.String(stmt.Table))
+	ok, err := r.CheckRule(node, plan, stmt)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return plan, nil
+	}
 	//send to all nodes and all tables
 	plan.RouteTableIndexs = plan.Rule.SubTableIndexs
 	plan.RouteNodeIndexs = makeList(0, len(plan.Rule.Nodes))
@@ -506,7 +495,7 @@ func (r *Router) buildTruncatePlan(db string, statement sqlparser.Statement) (*P
 	return plan, nil
 }
 
-func (r *Router) buildReplacePlan(db string, statement sqlparser.Statement) (*Plan, error) {
+func (r *Router) buildReplacePlan(db, node string, statement sqlparser.Statement) (*Plan, error) {
 	plan := &Plan{}
 	plan.Rows = make(map[int]sqlparser.Values)
 
@@ -520,8 +509,15 @@ func (r *Router) buildReplacePlan(db string, statement sqlparser.Statement) (*Pl
 	}
 
 	plan.Rule = r.GetRule(db, sqlparser.String(stmt.Table))
+	ok, err := r.CheckRule(node, plan, stmt)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return plan, nil
+	}
 
-	err := plan.GetIRKeyIndex(stmt.Columns)
+	err = plan.GetIRKeyIndex(stmt.Columns)
 	if err != nil {
 		return nil, err
 	}
@@ -694,16 +690,12 @@ func (r *Router) CheckPlan(plan *Plan) error {
 	return nil
 }
 
-func (r *Router) CheckRule(plan *Plan, stmt sqlparser.Statement) (bool, error) {
+func (r *Router) CheckRule(node string, plan *Plan, stmt sqlparser.Statement) (bool, error) {
 	if plan.Rule == nil {
 		buf := sqlparser.NewTrackedBuffer(nil)
 		stmt.Format(buf)
-		nodeName, err := r.GetNodeByDatabase(plan.Rule.DB)
-		if err != nil {
-			return false, err
-		}
 		sqls := make(map[string][]string, 1)
-		sqls[nodeName] = []string{buf.String()}
+		sqls[node] = []string{buf.String()}
 		plan.RewrittenSqls = sqls
 		return false, nil
 	}
@@ -738,11 +730,6 @@ func (r *Router) generateInsertSql(plan *Plan, stmt sqlparser.Statement) error {
 		return errors.ErrStmtConvert
 	}
 
-	ok, err := r.CheckRule(plan, stmt)
-	if !ok {
-		return err
-	}
-
 	sqls := make(map[string][]string)
 	tableCount := len(plan.RouteTableIndexs)
 	for i := 0; i < tableCount; i++ {
@@ -772,11 +759,6 @@ func (r *Router) generateUpdateSql(plan *Plan, stmt sqlparser.Statement) error {
 	node, ok := stmt.(*sqlparser.Update)
 	if ok == false {
 		return errors.ErrStmtConvert
-	}
-
-	ok, err := r.CheckRule(plan, stmt)
-	if !ok {
-		return err
 	}
 
 	sqls := make(map[string][]string)
@@ -811,10 +793,6 @@ func (r *Router) generateDeleteSql(plan *Plan, stmt sqlparser.Statement) error {
 	if ok == false {
 		return errors.ErrStmtConvert
 	}
-	ok, err := r.CheckRule(plan, stmt)
-	if !ok {
-		return err
-	}
 
 	sqls := make(map[string][]string)
 	tableCount := len(plan.RouteTableIndexs)
@@ -847,10 +825,6 @@ func (r *Router) generateReplaceSql(plan *Plan, stmt sqlparser.Statement) error 
 	if ok == false {
 		return errors.ErrStmtConvert
 	}
-	ok, err := r.CheckRule(plan, stmt)
-	if !ok {
-		return err
-	}
 
 	sqls := make(map[string][]string)
 	tableCount := len(plan.RouteTableIndexs)
@@ -880,14 +854,9 @@ func (r *Router) generateReplaceSql(plan *Plan, stmt sqlparser.Statement) error 
 }
 
 func (r *Router) generateTruncateSql(plan *Plan, stmt sqlparser.Statement) error {
-
 	node, ok := stmt.(*sqlparser.Truncate)
 	if ok == false {
 		return errors.ErrStmtConvert
-	}
-	ok, err := r.CheckRule(plan, stmt)
-	if !ok {
-		return err
 	}
 
 	sqls := make(map[string][]string)

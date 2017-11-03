@@ -24,7 +24,6 @@ import (
 
 	"github.com/labstack/echo"
 
-	"kingshard/config"
 	ksError "kingshard/core/errors"
 	"kingshard/core/golog"
 )
@@ -226,29 +225,6 @@ func (s *ApiServer) ChangeProxyStatus(c echo.Context) error {
 	return c.JSON(http.StatusOK, "ok")
 }
 
-func (s *ApiServer) AddDatabase(c echo.Context) error {
-	dbConfig := config.DatabaseConfig{}
-	err := c.Bind(&dbConfig)
-	if err != nil {
-		return err
-	}
-	err = s.proxy.AddDatabase(&dbConfig)
-	if err != nil {
-		return err
-	}
-	return c.JSON(http.StatusOK, "ok")
-}
-
-func (s *ApiServer) DeleteDatabase(c echo.Context) error {
-	dbConfig := config.DatabaseConfig{}
-	err := c.Bind(&dbConfig)
-	if err != nil {
-		return err
-	}
-	s.proxy.DeleteDatabase(&dbConfig)
-	return c.JSON(http.StatusOK, "ok")
-}
-
 //range,hash or date
 type ShardConfig struct {
 	DB            string   `json:"db"`
@@ -291,9 +267,9 @@ func (s *ApiServer) GetProxySchema(c echo.Context) error {
 	}
 
 	dbs := s.proxy.GetDatabases()
-	for _, db := range dbs {
+	for name, db := range dbs {
 		dbConfig = append(dbConfig, DatabaseConfig{
-			DB:    db.Cfg.DB,
+			DB:    name,
 			Nodes: db.Cfg.Nodes,
 		})
 	}

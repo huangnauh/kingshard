@@ -32,6 +32,13 @@ type ExecuteDB struct {
 	sql      string
 }
 
+func (db *ExecuteDB) String() string {
+	if db == nil {
+		return "nil"
+	}
+	return fmt.Sprintf("node %s", db.ExecNode)
+}
+
 func (c *ClientConn) isBlacklistSql(sql string) bool {
 	fingerprint := mysql.GetFingerprint(sql)
 	md5 := mysql.GetMd5(fingerprint)
@@ -71,6 +78,8 @@ func (c *ClientConn) preHandleShard(sql string) (bool, error) {
 
 	if c.isInTransaction() {
 		executeDB, err = c.GetTransExecDB(tokens, sql)
+		golog.Info("ClientConn", "preHandleShard",
+			fmt.Sprintf("%s isInTransaction", executeDB), c.connectionId)
 	} else {
 		executeDB, err = c.GetExecDB(tokens, sql)
 	}

@@ -32,7 +32,7 @@ import (
 
 /*处理query语句*/
 func (c *ClientConn) handleQuery(sql string) (err error) {
-	golog.Debug("ClientConn", "handleQuery", sql, 0)
+	golog.Debug("ClientConn", "handleQuery", sql, c.connectionId)
 
 	defer func() {
 		if e := recover(); e != nil {
@@ -44,7 +44,7 @@ func (c *ClientConn) handleQuery(sql string) (err error) {
 				buf = buf[:runtime.Stack(buf, false)]
 
 				golog.Error("ClientConn", "handleQuery",
-					err.Error(), 0,
+					err.Error(), c.connectionId,
 					"stack", string(buf), "sql", sql)
 			}
 			return
@@ -54,14 +54,14 @@ func (c *ClientConn) handleQuery(sql string) (err error) {
 	sql = strings.TrimRight(sql, ";") //删除sql语句最后的分号
 	hasHandled, err := c.preHandleShard(sql)
 	if err != nil {
-		golog.Error("server", "preHandleShard", err.Error(), 0,
+		golog.Error("server", "preHandleShard", err.Error(), c.connectionId,
 			"sql", sql,
 			"hasHandled", hasHandled,
 		)
 		return err
 	}
 	if hasHandled {
-		golog.Info("server", "handleQuery", "sql has handled", 0,
+		golog.Info("server", "handleQuery", "sql has handled", c.connectionId,
 			"sql", sql)
 		return nil
 	}
@@ -69,7 +69,7 @@ func (c *ClientConn) handleQuery(sql string) (err error) {
 	var stmt sqlparser.Statement
 	stmt, err = sqlparser.Parse(sql) //解析sql语句,得到的stmt是一个interface
 	if err != nil {
-		golog.Error("server", "parse", err.Error(), 0, "hasHandled", hasHandled, "sql", sql)
+		golog.Error("server", "parse", err.Error(), c.connectionId, "hasHandled", hasHandled, "sql", sql)
 		return err
 	}
 
@@ -364,7 +364,7 @@ func (c *ClientConn) newEmptyResultset(stmt *sqlparser.Select) *mysql.Resultset 
 }
 
 func (c *ClientConn) handleExec(stmt sqlparser.Statement, args []interface{}) error {
-	plan, err := c.schema.rule.BuildPlan(c.db, stmt)
+	plan, err := c.schema.rule.BuildPlan(c.db, c.node.Cfg.Name, stmt)
 	if err != nil {
 		return err
 	}

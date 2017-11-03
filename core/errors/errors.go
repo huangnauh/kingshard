@@ -31,6 +31,8 @@ var (
 	ErrNoSlaveDB     = errors.New("no slave database")
 	ErrNoDatabase    = errors.New("no database")
 
+	ErrNoClientNodeExist = errors.New("no node select in client")
+
 	ErrMasterDown    = errors.New("master is down")
 	ErrSlaveDown     = errors.New("slave is down")
 	ErrDatabaseClose = errors.New("database is close")

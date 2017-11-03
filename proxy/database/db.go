@@ -2,50 +2,52 @@ package database
 
 import (
 	"math/rand"
-	"sync"
 
+	"fmt"
+	"kingshard/backend"
 	"kingshard/config"
 	"kingshard/core/errors"
+	"kingshard/core/golog"
 )
 
 type Database struct {
-	Cfg *config.DatabaseConfig
-
-	sync.RWMutex
-	LastNodeIndex int
+	Cfg   *config.DatabaseConfig
+	nodes []*backend.Node
 }
 
-func (db *Database) GenerateIndex() {
-	n := len(db.Cfg.Nodes)
-	if n <= 0 {
-		return
-	}
-	db.LastNodeIndex = rand.Intn(n)
-}
-
-func (db *Database) ParseDatabase(cfg *config.DatabaseConfig) {
+func New(cfg *config.DatabaseConfig, nodes []*backend.Node) *Database {
+	db := new(Database)
 	db.Cfg = cfg
-	db.GenerateIndex()
+	db.nodes = nodes
+	return db
 }
 
-func (db *Database) GetNextNode() (string, error) {
-	db.Lock()
-	defer db.Unlock()
+func (db *Database) GetUser() (string, string) {
+	return db.Cfg.User, db.Cfg.Password
+}
 
-	l := len(db.Cfg.Nodes)
+func (db *Database) GetNode() (*backend.Node, error) {
+	l := len(db.nodes)
 	if l == 0 {
-		return "", errors.ErrNoDBNode
+		golog.Error("database", "GetNode", fmt.Sprintf("node not exist in db %s", db), 0)
+		return nil, errors.ErrNoDBNode
 	}
 
 	if l == 1 {
-		return db.Cfg.Nodes[0], nil
+		return db.nodes[0], nil
 	}
 
-	if l <= db.LastNodeIndex {
-		db.GenerateIndex()
+	start := rand.Intn(l)
+	i := start
+	var node *backend.Node
+	for {
+		node = db.nodes[i]
+		i = (i + 1) % l
+		if !node.Master.IsDown() || i == start {
+			break
+		}
+		golog.Error("database", "GetNode", fmt.Sprintf("node %s is Down", node), 0)
 	}
 
-	node := db.Cfg.Nodes[db.LastNodeIndex]
-	db.LastNodeIndex = (db.LastNodeIndex + 1) % l
 	return node, nil
 }

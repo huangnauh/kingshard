@@ -26,8 +26,6 @@ var configFileName string
 //整个config文件对应的结构
 type Config struct {
 	Addr string `yaml:"addr"`
-	//User     string `yaml:"user"`
-	//Password string `yaml:"password"`
 
 	WebAddr     string `yaml:"web_addr"`
 	WebUser     string `yaml:"web_user"`
@@ -60,8 +58,6 @@ type NodeConfig struct {
 
 //schema对应的结构体
 type SchemaConfig struct {
-	//Nodes     []string      `yaml:"nodes"`
-	//Default   string        `yaml:"default"` //default node
 	Databases []*DatabaseConfig `yaml:"databases"`
 	ShardRule []ShardConfig     `yaml:"shard"` //route rule
 }
