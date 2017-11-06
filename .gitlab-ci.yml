@@ -1,0 +1,11 @@
+stages:
+    - build
+build:
+    stage: build
+    image: repo.upyun.com:5043/ci-shared-runner
+    script:
+        - make build
+        - make test
+        - make clean
+    tags:
+        - offline-test
