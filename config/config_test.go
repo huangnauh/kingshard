@@ -24,8 +24,6 @@ func TestConfig(t *testing.T) {
 	var testConfigData = []byte(
 		`
 addr : 0.0.0.0:9696
-user : root
-password : root
 log_level : error
 allow_ips : 127.0.0.1,192.168.0.13
 
@@ -52,18 +50,22 @@ nodes :
   master : 127.0.0.1:3308
 
 schema :
-  nodes: [node1, node2, node3]
-  default: node1
+  databases:
+    -
+      db: upyun
+      user: root1
+      password: root1
+      nodes: [node1,node2,node3]
   shard:
     -  
-      db : kingshard  
+      db : upyun
       table: test_shard_hash
       key: id
       nodes: [node1, node2, node3]
       type: hash
       locations: [4,4,4]
     -   
-      db : kingshard
+      db : upyun
       table: test_shard_range
       key: id
       type: range
@@ -111,7 +113,7 @@ schema :
 	}
 
 	testShard_1 := ShardConfig{
-		DB:            "kingshard",
+		DB:            "upyun",
 		Table:         "test_shard_hash",
 		Key:           "id",
 		Nodes:         []string{"node1", "node2", "node3"},
@@ -125,7 +127,7 @@ schema :
 	}
 
 	testShard_2 := ShardConfig{
-		DB:            "kingshard",
+		DB:            "upyun",
 		Table:         "test_shard_range",
 		Key:           "id",
 		Nodes:         []string{"node2", "node3"},
@@ -142,9 +144,15 @@ schema :
 		t.Fatal("ShardRule must 2")
 	}
 
+	testDatabase := DatabaseConfig{
+		DB:       "upyun",
+		User:     "root1",
+		Password: "root1",
+		Nodes:    []string{"node1", "node2", "node3"},
+	}
+
 	testSchema := SchemaConfig{
-		Nodes:     []string{"node1", "node2", "node3"},
-		Default:   "node1",
+		Databases: []DatabaseConfig{testDatabase},
 		ShardRule: []ShardConfig{testShard_1, testShard_2},
 	}
 
@@ -152,8 +160,7 @@ schema :
 		t.Fatal("schema must equal")
 	}
 
-	if cfg.LogLevel != "error" || cfg.User != "root" ||
-		cfg.Password != "root" || cfg.Addr != "0.0.0.0:9696" {
+	if cfg.LogLevel != "error" || cfg.Addr != "0.0.0.0:9696" {
 		t.Fatal("Top Config not equal.")
 	}
 }

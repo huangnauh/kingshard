@@ -35,6 +35,8 @@ type (
 		// the `Host` header or the host name given in the URL itself.
 		Host() string
 
+		SetHost(string)
+
 		// URI returns the unmodified `Request-URI` sent by the client.
 		URI() string
 

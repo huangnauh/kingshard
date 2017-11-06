@@ -21,24 +21,38 @@ import (
 	"gopkg.in/yaml.v2"
 
 	"kingshard/config"
+	"kingshard/proxy/database"
 	"kingshard/sqlparser"
 )
+
+func NewRouterT(cfg *config.DatabaseConfig) *Router {
+	rt := new(Router)
+	rt.Rules = make(map[string]map[string]*Rule)
+	rt.Databases = map[string]*database.Database{
+		"upyun": &database.Database{Cfg: cfg},
+	}
+	return rt
+}
 
 func TestParseRule(t *testing.T) {
 	var s = `
 schema:
-  nodes: [node1, node2, node3]
-  default: node1
+  databases:
+    -
+      db: upyun
+      user: root1
+      password: root1
+      nodes: [node2,node3]
   shard:
     -
-      db: kingshard
+      db: upyun
       table: test_shard_hash
       key: id
       nodes: [node2, node3]
       locations: [16,16]
       type: hash
     -
-      db: kingshard
+      db: upyun
       table: test_shard_range
       key: id
       type: range
@@ -51,15 +65,13 @@ schema:
 		t.Fatal(err)
 	}
 
-	rt, err := NewRouter(&cfg.Schema)
+	rt := NewRouterT(&cfg.Schema.Databases[0])
+	err := rt.ParseRules(&cfg.Schema)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rt.DefaultRule.Nodes[0] != "node1" {
-		t.Fatal("default rule parse not correct.")
-	}
 
-	hashRule := rt.GetRule("kingshard", "test_shard_hash")
+	hashRule := rt.GetRule("upyun", "test_shard_hash")
 	if hashRule.Type != HashRuleType {
 		t.Fatal(hashRule.Type)
 	}
@@ -72,7 +84,7 @@ schema:
 		t.Fatal(n)
 	}
 
-	rangeRule := rt.GetRule("kingshard", "test_shard_range")
+	rangeRule := rt.GetRule("upyun", "test_shard_range")
 	if rangeRule.Type != RangeRuleType {
 		t.Fatal(rangeRule.Type)
 	}
@@ -80,33 +92,20 @@ schema:
 	if n, _ := rangeRule.FindNode(10000 - 1); n != "node2" {
 		t.Fatal(n)
 	}
-
-	defaultRule := rt.GetRule("kingshard", "defaultRule_table")
-	if defaultRule == nil {
-		t.Fatal("must not nil")
-	}
-
-	if defaultRule.Type != DefaultRuleType {
-		t.Fatal(defaultRule.Type)
-	}
-
-	if defaultRule.Shard == nil {
-		t.Fatal("nil error")
-	}
-
-	if n, _ := defaultRule.FindNode(11); n != "node1" {
-		t.Fatal(n)
-	}
 }
 
 func newTestRouter() *Router {
 	var s = `
 schema :
-  nodes: [node1,node2,node3,node4,node5,node6,node7,node8,node9,node10]
-  default: node1
+  databases:
+    -
+      db: upyun
+      user: root1
+      password: root1
+      nodes: [node1, node2,node3]
   shard:
     -
-      db: kingshard
+      db: upyun
       table: test1
       key: id
       nodes: [node1,node2,node3]
@@ -114,7 +113,7 @@ schema :
       type: hash
 
     -
-      db: kingshard
+      db: upyun
       table: test2
       key: id
       type: range
@@ -122,21 +121,21 @@ schema :
       locations: [4,4,4]
       table_row_limit: 10000
     -
-      db: kingshard
+      db: upyun
       table: test_shard_year
       key: date
       nodes: [node2, node3]
       date_range: [2012-2015,2016-2018]
       type: date_year
     -
-      db: kingshard
+      db: upyun
       table: test_shard_month
       key: date
       type: date_month
       nodes: [node2, node3]
       date_range: [201512-201603,201604-201608]
     -
-      db: kingshard
+      db: upyun
       table: test_shard_day
       key: date
       type: date_day
@@ -150,40 +149,44 @@ schema :
 		panic(err)
 	}
 
-	var r *Router
+	rt := NewRouterT(&cfg.Schema.Databases[0])
 
-	r, err = NewRouter(&cfg.Schema)
+	err = rt.ParseRules(&cfg.Schema)
 	if err != nil {
 		println(err.Error())
 		panic(err)
 	}
 
-	return r
+	return rt
 }
 
 //TODO YYYY-MM-DD HH:MM:SS,YYYY-MM-DD test
 func TestParseDateRule(t *testing.T) {
 	var s = `
 schema:
-  nodes: [node1, node2, node3]
-  default: node1
+  databases:
+    -
+      db: upyun
+      user: root1
+      password: root1
+      nodes: [node1, node2,node3]
   shard:
     -
-      db: kingshard
+      db: upyun
       table: test_shard_year
       key: date
       nodes: [node2, node3]
       date_range: [2012-2015,2016-2018]
       type: date_year
     -
-      db: kingshard
+      db: upyun
       table: test_shard_month
       key: date
       type: date_month
       nodes: [node2, node3]
       date_range: [201512-201603,201604-201608]
     -
-      db: kingshard
+      db: upyun
       table: test_shard_day
       key: date
       type: date_day
@@ -195,15 +198,12 @@ schema:
 		t.Fatal(err)
 	}
 
-	rt, err := NewRouter(&cfg.Schema)
+	rt := NewRouterT(&cfg.Schema.Databases[0])
+	err := rt.ParseRules(&cfg.Schema)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rt.DefaultRule.Nodes[0] != "node1" {
-		t.Fatal("default rule parse not correct.")
-	}
-
-	yearRule := rt.GetRule("kingshard", "test_shard_year")
+	yearRule := rt.GetRule("upyun", "test_shard_year")
 	if yearRule.Type != DateYearRuleType {
 		t.Fatal(yearRule.Type)
 	}
@@ -216,7 +216,7 @@ schema:
 		t.Fatal(n)
 	}
 
-	monthRule := rt.GetRule("kingshard", "test_shard_month")
+	monthRule := rt.GetRule("upyun", "test_shard_month")
 	if monthRule.Type != DateMonthRuleType {
 		t.Fatal(monthRule.Type)
 	}
@@ -225,7 +225,7 @@ schema:
 		t.Fatal(n)
 	}
 
-	dayRule := rt.GetRule("kingshard", "test_shard_day")
+	dayRule := rt.GetRule("upyun", "test_shard_day")
 	if dayRule.Type != DateDayRuleType {
 		t.Fatal(monthRule.Type)
 	}
@@ -239,11 +239,15 @@ schema:
 func newTestDBRule() *Router {
 	var s = `
 schema :
-  nodes: [node1,node2,node3,node4,node5,node6,node7,node8,node9,node10]
-  default: node1
+  databases:
+    -
+      db: upyun
+      user: root1
+      password: root1
+      nodes: [node1, node2,node3]
   shard:
     -
-      db: kingshard
+      db: upyun
       table: test1
       key: id
       nodes: [node1,node2,node3]
@@ -251,7 +255,7 @@ schema :
       type: hash
 
     -
-      db: kingshard
+      db: upyun
       table: test2
       key: id
       type: range
@@ -266,9 +270,11 @@ schema :
 		panic(err)
 	}
 
-	var r *Router
-
-	r, err = NewRouter(&cfg.Schema)
+	r := NewRouterT(&cfg.Schema.Databases[0])
+	err = r.ParseRules(&cfg.Schema)
+	if err != nil {
+		panic(err)
+	}
 	if err != nil {
 		println(err.Error())
 		panic(err)
@@ -281,7 +287,7 @@ func TestBadUpdateExpr(t *testing.T) {
 	var sql string
 	var db string
 	r := newTestDBRule()
-	db = "kingshard"
+	db = "upyun"
 	sql = "insert into test1 (id) values (5) on duplicate key update  id = 10"
 
 	stmt, err := sqlparser.Parse(sql)
@@ -289,7 +295,7 @@ func TestBadUpdateExpr(t *testing.T) {
 		t.Fatal(err.Error())
 	}
 
-	if _, err := r.BuildPlan(db, stmt); err == nil {
+	if _, err := r.BuildPlan(db, "node1", stmt); err == nil {
 		t.Fatal("must err")
 	}
 
@@ -300,7 +306,7 @@ func TestBadUpdateExpr(t *testing.T) {
 		t.Fatal(err.Error())
 	}
 
-	if _, err := r.BuildPlan(db, stmt); err == nil {
+	if _, err := r.BuildPlan(db, "node1", stmt); err == nil {
 		t.Fatal("must err")
 	}
 }
@@ -328,12 +334,12 @@ func isListEqual(l1 []int, l2 []int) bool {
 
 func checkPlan(t *testing.T, sql string, tableIndexs []int, nodeIndexs []int) {
 	r := newTestRouter()
-	db := "kingshard"
+	db := "upyun"
 	stmt, err := sqlparser.Parse(sql)
 	if err != nil {
 		t.Fatal(err.Error())
 	}
-	plan, err := r.BuildPlan(db, stmt)
+	plan, err := r.BuildPlan(db, "node1", stmt)
 	if err != nil {
 		t.Fatal(err.Error())
 	}

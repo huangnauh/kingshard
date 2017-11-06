@@ -13,4 +13,4 @@ clean:
 	@rm -f ./sqlparser/y.output ./sqlparser/sql.go
 
 test:
-	go test ./go/... -race
+	go test ./...

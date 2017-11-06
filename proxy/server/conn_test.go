@@ -37,7 +37,7 @@ func TestConn_DeleteTable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	c.UseDB("kingshard")
+	c.UseDB("upyun")
 	if _, err := c.Execute(`drop table if exists kingshard_test_proxy_conn`); err != nil {
 		t.Fatal(err)
 	}
@@ -64,7 +64,7 @@ func TestConn_CreateTable(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	c.UseDB("kingshard")
+	c.UseDB("upyun")
 	defer c.Close()
 	if _, err := c.Execute(s); err != nil {
 		t.Fatal(err)
@@ -304,7 +304,7 @@ func TestConn_LastInsertId(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = c1.UseDB("kingshard")
+	err = c1.UseDB("upyun")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -348,7 +348,7 @@ func TestConn_LastInsertId(t *testing.T) {
 	}
 
 	c1, _ = n.GetMasterConn()
-	err = c1.UseDB("kingshard")
+	err = c1.UseDB("upyun")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -26,17 +26,17 @@ func TestParse(t *testing.T) {
 		Name:             "node1",
 		DownAfterNoAlive: 100,
 		//IdleConns:        16,
-		User:     "hello",
-		Password: "world",
-		Master:   "127.0.0.1:3307",
-		Slave:    "192.168.1.12:3306@2,192.168.1.13:3306@4,192.168.1.14:3306@8",
+		User:     "runner",
+		Password: "runner123456",
+		Master:   "10.0.0.193:3306",
+		Slave:    "10.0.0.193:3306@2,127.0.0.1:3306@4",
 	}
 	node.Cfg = nodeConfig
 	err := node.ParseMaster(nodeConfig.Master)
 	if err != nil {
 		t.Fatal(err.Error())
 	}
-	if node.Master.addr != "127.0.0.1:3307" {
+	if node.Master.addr != "10.0.0.193:3306" {
 		t.Fatal(node.Master)
 	}
 	err = node.ParseSlave(nodeConfig.Slave)

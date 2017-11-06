@@ -38,17 +38,19 @@ nodes :
     name : node1 
     down_after_noalive : 300
     idle_conns : 16
-    user: root
-    password:
-    master : 127.0.0.1:3306
+    user: runner
+    password: runner123456
+    master : 10.0.0.193:3306
     slave : 
 
-schema :
-    default: node1  
-    nodes: [node1]
-    rules:
-        shard:
-            -
+schema:
+  databases:
+    -
+      db: upyun
+      user: root1
+      password: root1
+      nodes: [node1]
+  shard:
 `)
 
 func newTestServer(t *testing.T) *Server {
@@ -65,7 +67,7 @@ func newTestServer(t *testing.T) *Server {
 
 		go testServer.Run()
 
-		time.Sleep(1 * time.Second)
+		time.Sleep(5 * time.Second)
 	}
 
 	testServerOnce.Do(f)
@@ -77,7 +79,7 @@ func newTestDB(t *testing.T) *backend.DB {
 	newTestServer(t)
 
 	f := func() {
-		testDB, _ = backend.Open("127.0.0.1:3306", "root", "", "kingshard", 100)
+		testDB, _ = backend.Open("10.0.0.193:3306", "runner", "runner123456", "upyun", 100)
 	}
 
 	testDBOnce.Do(f)

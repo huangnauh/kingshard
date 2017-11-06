@@ -58,8 +58,8 @@ type NodeConfig struct {
 
 //schema对应的结构体
 type SchemaConfig struct {
-	Databases []*DatabaseConfig `yaml:"databases"`
-	ShardRule []ShardConfig     `yaml:"shard"` //route rule
+	Databases []DatabaseConfig `yaml:"databases"`
+	ShardRule []ShardConfig    `yaml:"shard"` //route rule
 }
 
 //range,hash or date

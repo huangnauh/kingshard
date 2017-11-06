@@ -214,35 +214,8 @@ func (s *Server) parseSchema() error {
 		return err
 	}
 
-	for _, shard := range schemaCfg.ShardRule {
-		rule, err := router.ParseRule(&shard)
-		if err != nil {
-			return err
-		}
-
-		db := rt.Databases[rule.DB]
-		if db == nil {
-			return fmt.Errorf("invalid database [%s].", rule.DB)
-		}
-
-		for _, node := range shard.Nodes {
-			if ok := contains(db.Cfg.Nodes, node); !ok {
-				return fmt.Errorf("invalid node [%s].", node)
-			}
-		}
-
-		//if the database exist in rules
-		if _, ok := rt.Rules[rule.DB]; ok {
-			if _, ok := rt.Rules[rule.DB][rule.Table]; ok {
-				return fmt.Errorf("table %s rule in %s duplicate", rule.Table, rule.DB)
-			} else {
-				rt.Rules[rule.DB][rule.Table] = rule
-			}
-		} else {
-			m := make(map[string]*router.Rule)
-			rt.Rules[rule.DB] = m
-			rt.Rules[rule.DB][rule.Table] = rule
-		}
+	if err := rt.ParseRules(&schemaCfg); err != nil {
+		return err
 	}
 	return nil
 }
@@ -250,7 +223,7 @@ func (s *Server) parseSchema() error {
 func (s *Server) parseDatabase() error {
 	dbCfg := s.cfg.Schema.Databases
 	for index := range dbCfg {
-		c := dbCfg[index]
+		c := &dbCfg[index]
 		if _, ok := s.schema.rule.Databases[c.DB]; ok {
 			return fmt.Errorf("database %s duplicate", c.DB)
 		}

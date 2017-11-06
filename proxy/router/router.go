@@ -98,6 +98,40 @@ func (r *Rule) checkUpdateExprs(exprs sqlparser.UpdateExprs) error {
 	return nil
 }
 
+func (r *Router) ParseRules(schemaCfg *config.SchemaConfig) error {
+	for _, shard := range schemaCfg.ShardRule {
+		rule, err := ParseRule(&shard)
+		if err != nil {
+			return err
+		}
+
+		db := r.Databases[rule.DB]
+		if db == nil {
+			return fmt.Errorf("invalid database [%s].", rule.DB)
+		}
+
+		for _, node := range shard.Nodes {
+			if ok := includeNode(db.Cfg.Nodes, node); !ok {
+				return fmt.Errorf("invalid node [%s].", node)
+			}
+		}
+
+		//if the database exist in rules
+		if _, ok := r.Rules[rule.DB]; ok {
+			if _, ok := r.Rules[rule.DB][rule.Table]; ok {
+				return fmt.Errorf("table %s rule in %s duplicate", rule.Table, rule.DB)
+			} else {
+				r.Rules[rule.DB][rule.Table] = rule
+			}
+		} else {
+			m := make(map[string]*Rule)
+			r.Rules[rule.DB] = m
+			r.Rules[rule.DB][rule.Table] = rule
+		}
+	}
+	return nil
+}
+
 func (r *Router) GetRule(db, table string) *Rule {
 	if len(r.Rules) == 0 {
 		return nil

@@ -25,7 +25,7 @@ func TestStmt_DropTable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	c.UseDB("kingshard")
+	c.UseDB("upyun")
 	if _, err := c.Execute(`drop table if exists kingshard_test_proxy_stmt`); err != nil {
 		t.Fatal(err)
 	}
@@ -50,7 +50,7 @@ func TestStmt_CreateTable(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	c.UseDB("kingshard")
+	c.UseDB("upyun")
 	defer c.Close()
 	if _, err := c.Execute(str); err != nil {
 		t.Fatal(err)
